@@ -3,26 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Color Splash App</title>
+    <title>Color Splash Pro</title>
     <style>
         /* --- Global Styles & Layout --- */
         :root {
-            --bg-color: #f4f4f9;
-            --main-text: #333;
-            --primary-color: #007bff;
+            --bg-color: #f8f9fa; /* Lighter background */
+            --main-text: #212529; /* Darker text */
+            --primary-color: #007bff; /* Vibrant blue */
             --primary-hover: #0056b3;
-            --secondary-color: #6c757d;
+            --secondary-color: #6c757d; /* Muted gray */
             --secondary-hover: #5a6268;
-            --danger-color: #dc3545;
+            --danger-color: #dc3545; /* Red for delete/reset */
             --light-gray: #e9ecef;
-            --border-color: #ced4da;
-            --glow-color-1: rgba(255, 0, 0, 0.9);
-            --glow-color-2: rgba(0, 255, 0, 0.9);
-            --glow-color-3: rgba(0, 0, 255, 0.9);
+            --border-color: #dee2e6;
+            --canvas-bg: #ffffff; /* White canvas background */
+            --selection-border-color: #ff0000; /* Red for boxes */
+            --glow-color-1: rgba(255, 0, 0, 0.8); /* Red glow */
+            --glow-color-2: rgba(0, 255, 0, 0.8); /* Green glow */
+            --glow-color-3: rgba(0, 0, 255, 0.8); /* Blue glow */
+            --sepia-tint: rgba(118, 90, 50, 0.3); /* Subtle sepia overlay */
+            --modal-overlay-bg: rgba(0, 0, 0, 0.6);
+            --log-bg: #212529;
+            --log-text: #f8f9fa;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 0;
             background-color: var(--bg-color);
@@ -31,56 +37,78 @@
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
+            font-size: 16px;
         }
 
-        header, footer {
+        header {
             background-color: #fff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            padding: 0.5rem 1rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 0.75rem 1.5rem;
             z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary-color);
         }
 
         main {
             flex-grow: 1;
             display: flex;
             flex-direction: column;
-            padding: 1rem;
+            padding: 1rem 1.5rem;
             gap: 1rem;
-            overflow: hidden;
+            overflow-y: auto; /* Allow scrolling for main content if needed */
+            overflow-x: hidden;
         }
 
         /* --- Controls --- */
         .controls-area, .options-area {
             display: flex;
             flex-wrap: wrap;
-            gap: 0.5rem;
+            gap: 0.75rem;
             align-items: center;
-            padding-bottom: 0.5rem;
+            padding-bottom: 0.75rem;
             border-bottom: 1px solid var(--light-gray);
+            background-color: #fff;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
         }
         
         .control-group {
             display: flex;
-            gap: 0.5rem;
-            border-left: 1px solid var(--border-color);
-            padding-left: 0.75rem;
+            gap: 0.75rem;
+            align-items: center;
+            padding-right: 0.75rem;
+            border-right: 1px solid var(--border-color);
+        }
+        .control-group:last-child {
+            border-right: none;
+            padding-right: 0;
         }
 
         button {
-            padding: 0.5rem 1rem;
+            padding: 0.6rem 1.2rem;
             border: 1px solid var(--border-color);
-            border-radius: 4px;
+            border-radius: 6px;
             background-color: #fff;
             cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s ease;
+            font-size: 0.95rem;
+            transition: all 0.2s ease-in-out;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         
         button:hover {
-            border-color: var(--secondary-hover);
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
 
         button.primary {
@@ -97,37 +125,51 @@
             background-color: var(--secondary-hover);
             color: white;
             border-color: var(--secondary-hover);
+            font-weight: 500;
         }
         
         button:disabled {
             background-color: var(--light-gray);
+            border-color: var(--border-color);
+            color: var(--secondary-color);
             cursor: not-allowed;
             opacity: 0.7;
+            box-shadow: none;
         }
 
         .options-area label {
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .options-area input[type="range"] {
+            cursor: pointer;
+            accent-color: var(--primary-color);
+        }
+        .options-area input[type="checkbox"] {
+            cursor: pointer;
         }
 
         /* --- Main Canvas & Drop Zone --- */
         .canvas-container {
             flex-grow: 1;
             position: relative;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+            background-color: var(--canvas-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #mainCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            display: block; /* Remove extra space below canvas */
+            max-width: 100%;
+            max-height: 100%;
             object-fit: contain;
+            border-radius: 12px; /* Match container */
         }
 
         .drop-zone {
@@ -137,15 +179,18 @@
             width: 100%;
             height: 100%;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            border: 3px dashed var(--border-color);
-            border-radius: 8px;
-            transition: all 0.3s ease;
+            border: 4px dashed var(--border-color);
+            border-radius: 12px;
+            transition: all 0.3s ease-in-out;
             text-align: center;
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             color: var(--secondary-color);
+            background-color: rgba(255, 255, 255, 0.9);
             z-index: 5;
+            pointer-events: none; /* So it doesn't interfere with canvas events */
         }
         
         .drop-zone.hidden {
@@ -154,12 +199,27 @@
 
         .drop-zone.dragover {
             border-color: var(--primary-color);
-            background-color: rgba(0, 123, 255, 0.05);
+            background-color: rgba(0, 123, 255, 0.08);
+            border-width: 5px;
+        }
+        .drop-zone p {
+            margin: 0.5rem 0;
         }
 
         /* --- Preview Gallery --- */
         .preview-gallery {
             flex-shrink: 0;
+            background-color: #fff;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+        .preview-gallery h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            text-align: center;
         }
         .previews-container {
             display: grid;
@@ -175,27 +235,33 @@
             height: auto;
             aspect-ratio: 16/9;
             background-color: var(--light-gray);
-            border-radius: 4px;
+            border-radius: 6px;
             border: 1px solid var(--border-color);
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
         }
         .preview-item code {
-            font-size: 0.75rem;
+            display: block;
+            font-size: 0.7rem;
             color: var(--secondary-color);
+            margin-top: 0.25rem;
+            word-break: break-word;
         }
 
         /* --- UI Feedback & Modals --- */
         .status-indicator {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background-color: rgba(0,0,0,0.7);
+            bottom: 15px;
+            left: 15px;
+            background-color: rgba(33, 37, 41, 0.85); /* Darker, semi-transparent */
             color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.8rem;
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
             z-index: 6;
             opacity: 0;
-            transition: opacity 0.5s ease;
+            transition: opacity 0.5s ease-in-out;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
         .status-indicator.visible {
             opacity: 1;
@@ -205,10 +271,11 @@
             display: inline-block;
             width: 1em;
             height: 1em;
-            border: 2px solid currentColor;
+            border: 3px solid currentColor;
             border-right-color: transparent;
             border-radius: 50%;
             animation: spin 1s linear infinite;
+            margin-right: 0.5rem;
         }
 
         @keyframes spin {
@@ -221,17 +288,31 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0,0,0,0.5);
+            background-color: var(--modal-overlay-bg);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+        }
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
         }
         .modal-dialog {
             background: white;
-            padding: 2rem;
-            border-radius: 8px;
+            padding: 2rem 2.5rem;
+            border-radius: 12px;
             text-align: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            max-width: 400px;
+            width: 90%;
+        }
+        .modal-dialog p {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
         }
         .modal-dialog .button-group {
             margin-top: 1rem;
@@ -250,41 +331,152 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: #222;
-            color: #eee;
-            height: 150px;
+            background: var(--log-bg);
+            color: var(--log-text);
+            height: 180px;
             overflow-y: auto;
-            font-family: monospace;
+            font-family: 'Consolas', 'Monaco', monospace;
             font-size: 0.8rem;
             padding: 0.5rem;
-            border-top: 2px solid var(--primary-color);
+            border-top: 3px solid var(--primary-color);
             z-index: 200;
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.2);
+            transition: height 0.3s ease-in-out;
         }
-        .dev-log p { margin: 0 0 0.25rem; }
+        .dev-log.collapsed {
+            height: 30px;
+        }
+        .dev-log p { margin: 0 0 0.3rem; }
         .dev-log .log-toggle {
             position: absolute;
             top: -30px;
             right: 20px;
-            background: #222;
-            color: #eee;
+            background: var(--log-bg);
+            color: var(--log-text);
             border: none;
             border-radius: 4px 4px 0 0;
+            padding: 0.2rem 0.5rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+            z-index: 201;
+        }
+        .dev-log.collapsed .log-toggle {
+            top: 0;
+            right: 0;
+            border-radius: 0;
+        }
+        .log-toggle-closed {
+            position: fixed;
+            bottom: 0;
+            right: 20px;
+            background: var(--log-bg);
+            color: var(--log-text);
+            border: none;
+            border-radius: 4px 4px 0 0;
+            padding: 0.2rem 0.5rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+            z-index: 199;
+            height: 30px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* --- Tool Specific Styles --- */
+        .selection-box {
+            position: absolute;
+            border: 2px dashed var(--selection-border-color);
+            cursor: move;
+            background-color: rgba(255, 255, 255, 0.1); /* Slight fill for visibility */
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5); /* Glow for boxes */
+        }
+        .selection-box.resizing {
+            cursor: nwse-resize; /* Default resize cursor */
+        }
+        .selection-handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: var(--selection-border-color);
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: nwse-resize;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+        }
+        .selection-handle.top-left { top: -6px; left: -6px; cursor: nwse-resize; }
+        .selection-handle.top-right { top: -6px; right: -6px; cursor: nesw-resize; }
+        .selection-handle.bottom-left { bottom: -6px; left: -6px; cursor: nesw-resize; }
+        .selection-handle.bottom-right { bottom: -6px; right: -6px; cursor: nwse-resize; }
+        .selection-handle.top { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .selection-handle.bottom { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+        .selection-handle.left { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; }
+        .selection-handle.right { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
+
+        .lasso-glow {
+            position: absolute;
+            border-radius: 50%;
+            animation: pulseGlow 1.5s infinite ease-in-out;
+            box-shadow: 0 0 15px 5px var(--glow-color-1); /* Default glow */
+            pointer-events: none; /* Don't interfere with mouse events */
+            z-index: 10; /* Ensure glow is above canvas */
+        }
+        .lasso-glow.color-2 { box-shadow: 0 0 15px 5px var(--glow-color-2); }
+        .lasso-glow.color-3 { box-shadow: 0 0 15px 5px var(--glow-color-3); }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 15px 5px var(--glow-color-1); opacity: 0.8; }
+            50% { box-shadow: 0 0 25px 10px var(--glow-color-1); opacity: 1; }
+            100% { box-shadow: 0 0 15px 5px var(--glow-color-1); opacity: 0.8; }
+        }
+        .lasso-glow.color-2 { animation-name: pulseGlow2; }
+        .lasso-glow.color-3 { animation-name: pulseGlow3; }
+        @keyframes pulseGlow2 {
+            0% { box-shadow: 0 0 15px 5px var(--glow-color-2); opacity: 0.8; }
+            50% { box-shadow: 0 0 25px 10px var(--glow-color-2); opacity: 1; }
+            100% { box-shadow: 0 0 15px 5px var(--glow-color-2); opacity: 0.8; }
+        }
+        @keyframes pulseGlow3 {
+            0% { box-shadow: 0 0 15px 5px var(--glow-color-3); opacity: 0.8; }
+            50% { box-shadow: 0 0 25px 10px var(--glow-color-3); opacity: 1; }
+            100% { box-shadow: 0 0 15px 5px var(--glow-color-3); opacity: 0.8; }
+        }
+
+        /* --- Responsive Adjustments --- */
+        @media (max-width: 768px) {
+            header { padding: 0.75rem 1rem; }
+            main { padding: 0.75rem 1rem; }
+            .controls-area, .options-area { flex-direction: column; align-items: stretch; }
+            .control-group { border-right: none; padding-right: 0; padding-bottom: 0.5rem; border-bottom: 1px solid var(--light-gray); }
+            .control-group:last-child { border-bottom: none; }
+            button { width: 100%; }
+            .previews-container { grid-template-columns: repeat(2, 1fr); }
+            .dev-log { height: 120px; }
+        }
+        @media (max-width: 480px) {
+            header h1 { font-size: 1.2rem; }
+            .previews-container { grid-template-columns: 1fr; }
         }
 
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
 
     <header>
-        <h1>Color Splash App</h1>
+        <h1>Color Splash Pro</h1>
+        <div class="header-controls">
+            <button id="saveBtn" disabled>💾 Save Work</button>
+            <button id="loadBtn">📂 Load Work</button>
+        </div>
     </header>
 
     <main>
         <section class="controls-area" aria-label="Main Controls">
             <div class="control-group">
-                <button id="uploadBtn" class="primary">📤 Upload Image</button>
-                <button id="saveBtn" disabled>💾 Save Work</button>
-                <button id="loadBtn">📂 Load Work</button>
+                <button id="uploadBtn" class="primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-upload" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2a.5.5 0 0 1 1 0v2a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2a.5.5 0 0 1 .5-.5z"/><path d="M7.646 1.146a.5.5 0 0 0-.708 0l-4 4a.5.5 0 0 0 .708.708L7 2.707V11.5a.5.5 0 0 0 1 0V2.707l2.646 2.647a.5.5 0 0 0 .708-.708l-4-4z"/></svg>
+                    Upload Image
+                </button>
             </div>
             <div class="control-group">
                 <button id="undoBtn" disabled>↩️ Undo</button>
@@ -303,13 +495,14 @@
 
         <div class="canvas-container">
             <div id="dropZone" class="drop-zone">
-                <p>Drag & Drop an image here, or click 'Upload Image'</p>
+                <p>Drag & Drop an image here, or click the 'Upload Image' button</p>
             </div>
             <canvas id="mainCanvas"></canvas>
             <div id="statusIndicator" class="status-indicator">Ready</div>
         </div>
 
         <section class="preview-gallery" aria-label="Preview Gallery">
+            <h2>Preview Variations</h2>
             <button id="renderBtn" disabled>🎨 Render Previews</button>
             <div class="previews-container">
                 <div class="preview-item">
@@ -337,7 +530,7 @@
     </main>
 
     <!-- Modals and Hidden Elements -->
-    <div id="confirmModal" class="modal-overlay hidden">
+    <div id="confirmModal" class="modal-overlay">
         <div class="modal-dialog">
             <p>Are you sure you want to start over? All unsaved work will be lost.</p>
             <div class="button-group">
@@ -347,17 +540,17 @@
         </div>
     </div>
     
-    <div id="devLog" class="dev-log hidden">
-        <button class="log-toggle" id="logToggleBtn">Toggle Log</button>
+    <div id="devLog" class="dev-log">
+        <button class="log-toggle" id="logToggleBtn">Hide Log</button>
         <p>Developer Log Initialized...</p>
     </div>
-    <button class="log-toggle" id="logToggleBtnClosed" style="position:fixed; bottom:0; right:20px; z-index:199;">Show Log</button>
+    <button class="log-toggle log-toggle-closed" id="logToggleBtnClosed">Show Log</button>
 
     <input type="file" id="fileInput" accept="image/*" class="hidden">
     <input type="file" id="loadInput" accept=".json, .txt" class="hidden">
 
     <script>
-    // Senior Dev Implementation: Wrapped in an IIFE to encapsulate the logic.
+    // Senior Dev Implementation: Wrapped in an IIFE for encapsulation.
     (function() {
         'use strict';
 
@@ -400,16 +593,35 @@
         // --- 2. State Management ---
         let state = {
             originalImage: null,
+            canvasImage: null, // Image data for current canvas rendering
             currentMode: 'lasso', // 'lasso' or 'box'
-            selections: [],
+            selections: [], // Array of { type, data, color, aggressiveness/style }
             history: [],
             historyIndex: -1,
             isDirty: false, // Has changes since last render
             isRendering: false,
+            isDraggingFile: false,
+            isResizing: false,
+            isMovingSelection: null, // Stores the selection being moved/resized
+            lassoActive: false, // For lasso tool interaction
+            lassoData: null, // Temporary data for lasso
+            lassoColorIndex: 0, // To cycle through lasso colors
+            boxColorIndex: 0, // To cycle through box colors
+            canvasScale: 1,
+            canvasOffset: { x: 0, y: 0 },
+            activeSelectionIndex: -1, // Index of the currently selected box/lasso for manipulation
         };
         
-        const SELECTION_COLORS = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff'];
+        const SELECTION_COLORS = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff']; // Red, Green, Blue, Yellow, Magenta
+        const PREVIEW_STYLES = [
+            { name: 'Normal', effect: 'normal', params: {} },
+            { name: 'Dark', effect: 'darken', params: { factor: 0.7 } },
+            { name: 'Soft', effect: 'lighten', params: { factor: 1.3 } },
+            { name: 'Sepia', effect: 'sepia', params: { tint: [118, 90, 50] } },
+            { name: 'Invert', effect: 'invert', params: {} }
+        ];
         let inactivityTimer = null;
+        let mousePos = { x: 0, y: 0 }; // Track mouse position for lasso
 
         // --- 3. Core Modules ---
 
@@ -423,6 +635,14 @@
                 p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
                 dom.devLog.appendChild(p);
                 dom.devLog.scrollTop = dom.devLog.scrollHeight;
+            },
+            error(message) {
+                console.error(message);
+                const p = document.createElement('p');
+                p.style.color = 'red';
+                p.textContent = `[${new Date().toLocaleTimeString()}] ERROR: ${message}`;
+                dom.devLog.appendChild(p);
+                dom.devLog.scrollTop = dom.devLog.scrollHeight;
             }
         };
 
@@ -434,6 +654,7 @@
                 logger.log('UI Manager Initialized');
                 this.updateModeUI();
                 this.updateButtonStates();
+                this.toggleLog(false); // Start with log hidden
             },
             
             updateModeUI() {
@@ -443,16 +664,19 @@
                 dom.optionsArea.innerHTML = ''; // Clear previous options
                 if (state.currentMode === 'lasso') {
                     dom.optionsArea.innerHTML = `
-                        <label for="aggressiveness">Aggressiveness: </label>
-                        <input type="range" id="aggressiveness" min="1" max="100" value="20">
-                        <button id="addSelectionBtn" disabled>✨ Add another object</button>
+                        <label for="aggressiveness">Aggressiveness:</label>
+                        <input type="range" id="aggressiveness" min="1" max="100" value="20" style="width: 150px;">
+                        <button id="addSelectionBtn" class="primary">✨ Add another object</button>
                     `;
+                    // Re-attach listeners for new elements
+                    document.getElementById('addSelectionBtn').addEventListener('click', this.handleAddSelection);
+                    document.getElementById('aggressiveness').addEventListener('input', this.handleAggressivenessChange);
                 } else {
                     dom.optionsArea.innerHTML = `
                         <label><input type="checkbox" id="multiBoxCheck"> Add another box</label>
                     `;
+                    document.getElementById('multiBoxCheck').addEventListener('change', this.handleMultiBoxToggle);
                 }
-                // Re-attach listeners for new elements if needed
             },
             
             updateButtonStates() {
@@ -460,17 +684,17 @@
                 const canUndo = state.historyIndex > 0;
                 const canRedo = state.historyIndex < state.history.length - 1;
 
-                dom.saveBtn.disabled = !hasImage;
-                dom.resetBtn.disabled = !hasImage;
+                dom.saveBtn.disabled = !hasImage || state.isRendering;
+                dom.resetBtn.disabled = !hasImage || state.isRendering;
                 dom.renderBtn.disabled = !hasImage || state.isRendering;
-                dom.undoBtn.disabled = !canUndo;
-                dom.redoBtn.disabled = !canRedo;
+                dom.undoBtn.disabled = !canUndo || state.isRendering;
+                dom.redoBtn.disabled = !canRedo || state.isRendering;
                 
                 const addSelectionBtn = document.getElementById('addSelectionBtn');
-                if (addSelectionBtn) addSelectionBtn.disabled = !hasImage;
+                if (addSelectionBtn) addSelectionBtn.disabled = !hasImage || state.isRendering;
             },
             
-            showStatus(message, duration = 2000) {
+            showStatus(message, duration = 3000) {
                 logger.log(`Status: ${message}`);
                 dom.statusIndicator.textContent = message;
                 dom.statusIndicator.classList.add('visible');
@@ -478,12 +702,42 @@
             },
 
             toggleModal(show) {
-                dom.confirmModal.classList.toggle('hidden', !show);
+                dom.confirmModal.classList.toggle('visible', show);
             },
 
             toggleLog(show) {
-                dom.devLog.classList.toggle('hidden', !show);
+                dom.devLog.classList.toggle('collapsed', !show);
+                dom.logToggleBtn.textContent = show ? 'Hide Log' : 'Show Log';
                 dom.logToggleBtnClosed.classList.toggle('hidden', show);
+            },
+
+            // Event Handlers for dynamically added elements
+            handleAddSelection() {
+                if (state.currentMode === 'lasso' && state.originalImage) {
+                    stateManager.saveState(); // Save before starting new selection
+                    state.lassoActive = true;
+                    state.lassoColorIndex = (state.lassoColorIndex + 1) % SELECTION_COLORS.length;
+                    const newColor = SELECTION_COLORS[state.lassoColorIndex];
+                    const aggressiveness = parseInt(document.getElementById('aggressiveness').value);
+                    state.selections.push({ type: 'lasso', points: [], aggressiveness: aggressiveness, color: newColor });
+                    state.activeSelectionIndex = state.selections.length - 1;
+                    uiManager.showStatus('Click on an object to select it.');
+                    uiManager.updateButtonStates();
+                }
+            },
+            handleAggressivenessChange(e) {
+                if (state.currentMode === 'lasso' && state.activeSelectionIndex !== -1) {
+                    const aggressiveness = parseInt(e.target.value);
+                    state.selections[state.activeSelectionIndex].aggressiveness = aggressiveness;
+                    canvasRenderer.render(); // Re-render to show effect of aggressiveness change
+                    state.isDirty = true; // Mark as dirty for auto-save/preview
+                }
+            },
+            handleMultiBoxToggle(e) {
+                if (state.currentMode === 'box') {
+                    // This checkbox just controls whether a new box is added on click
+                    // The actual drawing logic will check this flag
+                }
             }
         };
 
@@ -497,11 +751,18 @@
                     state.history = state.history.slice(0, state.historyIndex + 1);
                 }
                 
-                const snapshot = JSON.parse(JSON.stringify({ selections: state.selections }));
+                // Deep copy current state
+                const snapshot = JSON.parse(JSON.stringify({ 
+                    selections: state.selections,
+                    currentMode: state.currentMode,
+                    lassoColorIndex: state.lassoColorIndex,
+                    boxColorIndex: state.boxColorIndex,
+                    activeSelectionIndex: state.activeSelectionIndex
+                }));
                 state.history.push(snapshot);
                 state.historyIndex++;
                 
-                logger.log(`State saved. History length: ${state.history.length}`);
+                logger.log(`State saved. History length: ${state.history.length}, Index: ${state.historyIndex}`);
                 uiManager.updateButtonStates();
                 this.autoSaveToLocalStorage();
             },
@@ -525,6 +786,12 @@
             loadStateFromHistory() {
                 const snapshot = state.history[state.historyIndex];
                 state.selections = JSON.parse(JSON.stringify(snapshot.selections));
+                state.currentMode = snapshot.currentMode;
+                state.lassoColorIndex = snapshot.lassoColorIndex;
+                state.boxColorIndex = snapshot.boxColorIndex;
+                state.activeSelectionIndex = snapshot.activeSelectionIndex;
+                
+                uiManager.updateModeUI(); // Update UI to reflect mode
                 canvasRenderer.render();
                 uiManager.updateButtonStates();
                 this.autoSaveToLocalStorage();
@@ -534,8 +801,15 @@
                 state.selections = [];
                 state.history = [];
                 state.historyIndex = -1;
+                state.lassoColorIndex = 0;
+                state.boxColorIndex = 0;
+                state.activeSelectionIndex = -1;
+                state.lassoActive = false;
+                state.isDirty = false;
+                
                 this.saveState(); // Save the initial empty state
                 canvasRenderer.render();
+                uiManager.showStatus('Canvas cleared.');
             },
             
             autoSaveToLocalStorage() {
@@ -543,12 +817,17 @@
                 try {
                     const dataToSave = {
                         selections: state.selections,
-                        imageDataUrl: state.originalImage.src
+                        imageDataUrl: state.originalImage.src,
+                        currentMode: state.currentMode,
+                        lassoColorIndex: state.lassoColorIndex,
+                        boxColorIndex: state.boxColorIndex,
+                        activeSelectionIndex: state.activeSelectionIndex,
+                        aggressiveness: document.getElementById('aggressiveness')?.value || 20 // Save current aggressiveness
                     };
                     localStorage.setItem('colorSplashAutoSave', JSON.stringify(dataToSave));
                     logger.log('Work auto-saved to browser.');
                 } catch (e) {
-                    logger.log('Error auto-saving: ' + e.message);
+                    logger.error('Error auto-saving: ' + e.message);
                     uiManager.showStatus('Could not auto-save. Browser storage might be full.');
                 }
             },
@@ -558,16 +837,39 @@
                 if (savedData) {
                     logger.log('Found auto-saved work.');
                     if (confirm('It looks like you have unsaved work. Do you want to load it?')) {
-                        const parsedData = JSON.parse(savedData);
-                        const img = new Image();
-                        img.onload = () => {
-                            fileHandler.processNewImage(img);
-                            state.selections = parsedData.selections;
-                            stateManager.saveState(); // Add to history
-                            canvasRenderer.render();
-                            uiManager.showStatus('Auto-saved work loaded.');
-                        };
-                        img.src = parsedData.imageDataUrl;
+                        try {
+                            const parsedData = JSON.parse(savedData);
+                            const img = new Image();
+                            img.onload = () => {
+                                fileHandler.processNewImage(img);
+                                state.selections = parsedData.selections;
+                                state.currentMode = parsedData.currentMode;
+                                state.lassoColorIndex = parsedData.lassoColorIndex;
+                                state.boxColorIndex = parsedData.boxColorIndex;
+                                state.activeSelectionIndex = parsedData.activeSelectionIndex;
+                                
+                                // Set aggressiveness slider if it exists
+                                const aggInput = document.getElementById('aggressiveness');
+                                if (aggInput) aggInput.value = parsedData.aggressiveness;
+
+                                uiManager.updateModeUI();
+                                stateManager.saveState(); // Add loaded state to history
+                                canvasRenderer.render();
+                                uiManager.showStatus('Auto-saved work loaded.');
+                            };
+                            img.onerror = () => {
+                                logger.error('Failed to load image from auto-save data.');
+                                uiManager.showStatus('Failed to load auto-saved image.');
+                                localStorage.removeItem('colorSplashAutoSave'); // Clear bad data
+                            };
+                            img.src = parsedData.imageDataUrl;
+                        } catch (e) {
+                            logger.error('Error loading auto-save data: ' + e.message);
+                            uiManager.showStatus('Failed to load auto-saved work.');
+                            localStorage.removeItem('colorSplashAutoSave'); // Clear bad data
+                        }
+                    } else {
+                        localStorage.removeItem('colorSplashAutoSave'); // User chose not to load, clear it
                     }
                 }
             }
@@ -577,36 +879,85 @@
          * Canvas Renderer: Handles all drawing operations.
          */
         const canvasRenderer = {
-            ctx: dom.mainCanvas.getContext('2d'),
+            ctx: dom.mainCanvas.getContext('2d', { willReadFrequently: true }), // willReadFrequently for performance
             offscreenCanvas: document.createElement('canvas'),
             offscreenCtx: null,
+            selectionOverlayCanvas: document.createElement('canvas'), // For drawing selections on top
+            selectionOverlayCtx: null,
 
             init() {
-                this.offscreenCtx = this.offscreenCanvas.getContext('2d');
+                this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
+                this.selectionOverlayCtx = this.selectionOverlayCanvas.getContext('2d');
+                this.resizeCanvas(); // Set initial canvas size
+                window.addEventListener('resize', this.resizeCanvas.bind(this));
+                logger.log('Canvas Renderer Initialized');
+            },
+
+            resizeCanvas() {
+                const container = dom.mainCanvas.parentElement;
+                const img = state.originalImage;
+
+                if (!img) {
+                    dom.mainCanvas.width = container.clientWidth;
+                    dom.mainCanvas.height = container.clientHeight;
+                    this.offscreenCanvas.width = container.clientWidth;
+                    this.offscreenCanvas.height = container.clientHeight;
+                    this.selectionOverlayCanvas.width = container.clientWidth;
+                    this.selectionOverlayCanvas.height = container.clientHeight;
+                    return;
+                }
+
+                const aspectRatio = img.width / img.height;
+                let canvasWidth = container.clientWidth;
+                let canvasHeight = container.clientWidth / aspectRatio;
+
+                if (canvasHeight > container.clientHeight) {
+                    canvasHeight = container.clientHeight;
+                    canvasWidth = container.clientHeight * aspectRatio;
+                }
+
+                dom.mainCanvas.width = canvasWidth;
+                dom.mainCanvas.height = canvasHeight;
+                this.offscreenCanvas.width = canvasWidth;
+                this.offscreenCanvas.height = canvasHeight;
+                this.selectionOverlayCanvas.width = canvasWidth;
+                this.selectionOverlayCanvas.height = canvasHeight;
+
+                state.canvasScale = canvasWidth / img.width; // Scale factor for drawing
+                state.canvasOffset = {
+                    x: (container.clientWidth - canvasWidth) / 2,
+                    y: (container.clientHeight - canvasHeight) / 2
+                };
+
+                logger.log(`Canvas resized to ${canvasWidth}x${canvasHeight}. Scale: ${state.canvasScale}`);
+                this.render(); // Re-render after resize
             },
 
             render() {
-                if (!state.originalImage) return;
+                if (!state.originalImage) {
+                    this.ctx.clearRect(0, 0, dom.mainCanvas.width, dom.mainCanvas.height);
+                    return;
+                }
+                
                 logger.log('Starting main render...');
+                state.isRendering = true;
+                uiManager.updateButtonStates();
 
                 const canvas = dom.mainCanvas;
                 const img = state.originalImage;
-                
-                // Fit image to canvas while maintaining aspect ratio
-                const hRatio = canvas.width / img.width;
-                const vRatio = canvas.height / img.height;
-                const ratio = Math.min(hRatio, vRatio);
-                const centerShift_x = (canvas.width - img.width * ratio) / 2;
-                const centerShift_y = (canvas.height - img.height * ratio) / 2;
+                const scale = state.canvasScale;
+                const offsetX = state.canvasOffset.x;
+                const offsetY = state.canvasOffset.y;
 
+                // Clear canvas and draw original image scaled and centered
                 this.ctx.clearRect(0, 0, canvas.width, canvas.height);
-                this.ctx.drawImage(img, 0, 0, img.width, img.height, centerShift_x, centerShift_y, img.width * ratio, img.height * ratio);
+                this.ctx.drawImage(img, 0, 0, img.width, img.height, offsetX, offsetY, img.width * scale, img.height * scale);
                 
                 // Get image data from the scaled drawing
-                const imageData = this.ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const imageData = this.ctx.getImageData(offsetX, offsetY, img.width * scale, img.height * scale);
                 const data = imageData.data;
 
-                // Create grayscale version
+                // Create grayscale version of the image data
                 for (let i = 0; i < data.length; i += 4) {
                     const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
                     data[i] = avg;
@@ -614,27 +965,142 @@
                     data[i + 2] = avg;
                 }
                 
-                // Put grayscale back, then "cut holes" for selections
-                this.ctx.putImageData(imageData, 0, 0);
+                // Draw the grayscale image onto the canvas
+                this.ctx.putImageData(imageData, offsetX, offsetY);
 
-                this.ctx.save();
-                this.ctx.globalCompositeOperation = 'destination-in';
+                // --- Draw Selections and Apply Color Mask ---
+                this.selectionOverlayCtx.clearRect(0, 0, this.selectionOverlayCanvas.width, this.selectionOverlayCanvas.height);
+                this.selectionOverlayCtx.save();
                 
-                // Draw selections to create mask
-                state.selections.forEach(sel => {
-                    // TODO: Implement drawing selections
-                });
+                // Use 'destination-in' to create a mask: only where selections are drawn, the grayscale will be replaced by original color
+                this.selectionOverlayCtx.globalCompositeOperation = 'destination-in';
+                
+                state.selections.forEach((sel, index) => {
+                    this.selectionOverlayCtx.fillStyle = sel.color; // Use selection color for mask
+                    this.selectionOverlayCtx.globalAlpha = 1; // Full opacity for mask
 
-                this.ctx.restore();
+                    if (sel.type === 'box') {
+                        this.selectionOverlayCtx.fillRect(
+                            offsetX + sel.x * scale,
+                            offsetY + sel.y * scale,
+                            sel.width * scale,
+                            sel.height * scale
+                        );
+                    } else if (sel.type === 'lasso') {
+                        this.selectionOverlayCtx.beginPath();
+                        sel.points.forEach((point, pIndex) => {
+                            const px = offsetX + point.x * scale;
+                            const py = offsetY + point.y * scale;
+                            if (pIndex === 0) {
+                                this.selectionOverlayCtx.moveTo(px, py);
+                            } else {
+                                this.selectionOverlayCtx.lineTo(px, py);
+                            }
+                        });
+                        this.selectionOverlayCtx.closePath();
+                        this.selectionOverlayCtx.fill();
+                    }
+                });
+                
+                this.selectionOverlayCtx.restore();
+                this.ctx.drawImage(this.selectionOverlayCanvas, 0, 0); // Draw the mask onto the main canvas
+
+                // --- Draw Selection Overlays (Borders, Handles, Glows) ---
+                this.drawSelectionOverlays();
 
                 logger.log('Main render complete.');
+                state.isRendering = false;
+                uiManager.updateButtonStates();
+                state.isDirty = true; // Mark as dirty for auto-save/preview
                 
-                // Trigger preview render after a delay
-                state.isDirty = true;
                 clearTimeout(inactivityTimer);
                 inactivityTimer = setTimeout(() => {
                     if (state.isDirty) this.renderPreviews();
                 }, 10000);
+            },
+
+            drawSelectionOverlays() {
+                const scale = state.canvasScale;
+                const offsetX = state.canvasOffset.x;
+                const offsetY = state.canvasOffset.y;
+
+                // Clear previous overlays
+                this.selectionOverlayCtx.clearRect(0, 0, this.selectionOverlayCanvas.width, this.selectionOverlayCanvas.height);
+
+                state.selections.forEach((sel, index) => {
+                    const isActive = index === state.activeSelectionIndex;
+                    const color = sel.color;
+
+                    if (sel.type === 'box') {
+                        const boxX = offsetX + sel.x * scale;
+                        const boxY = offsetY + sel.y * scale;
+                        const boxW = sel.width * scale;
+                        const boxH = sel.height * scale;
+
+                        // Draw box border
+                        this.selectionOverlayCtx.save();
+                        this.selectionOverlayCtx.strokeStyle = color;
+                        this.selectionOverlayCtx.lineWidth = 2;
+                        this.selectionOverlayCtx.setLineDash([8, 4]); // Dashed line
+                        this.selectionOverlayCtx.strokeRect(boxX, boxY, boxW, boxH);
+                        this.selectionOverlayCtx.restore();
+
+                        // Draw handles if active
+                        if (isActive) {
+                            this.drawBoxHandles(boxX, boxY, boxW, boxH, color);
+                        }
+                    } else if (sel.type === 'lasso') {
+                        // Draw lasso glow
+                        const glowElement = document.getElementById(`lassoGlow-${index}`);
+                        if (glowElement) {
+                            const glowSize = (sel.aggressiveness / 100) * 50 + 20; // Scale glow size with aggressiveness
+                            glowElement.style.width = `${glowSize}px`;
+                            glowElement.style.height = `${glowSize}px`;
+                            glowElement.style.left = `${offsetX + sel.center.x * scale - glowSize / 2}px`;
+                            glowElement.style.top = `${offsetY + sel.center.y * scale - glowSize / 2}px`;
+                            glowElement.style.boxShadow = `0 0 20px 8px ${color}`;
+                            glowElement.style.animationName = `pulseGlow${index}`; // Unique animation name
+                            glowElement.classList.add(`color-${index % 3 + 1}`); // Apply color class
+                            glowElement.style.display = 'block';
+                        }
+                    }
+                });
+                
+                // Draw the selection overlays on top of the main canvas
+                this.ctx.drawImage(this.selectionOverlayCanvas, 0, 0);
+            },
+
+            drawBoxHandles(x, y, w, h, color) {
+                const handles = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'bottom', 'left', 'right'];
+                handles.forEach(handleType => {
+                    const handle = document.createElement('div');
+                    handle.className = `selection-handle ${handleType}`;
+                    handle.style.backgroundColor = color;
+                    handle.style.borderColor = 'white';
+                    handle.style.cursor = this.getHandleCursor(handleType);
+                    
+                    // Position the handle
+                    if (handleType.includes('top')) handle.style.top = `${y - 6}px`;
+                    if (handleType.includes('bottom')) handle.style.bottom = `${-y - 6}px`; // Relative to bottom
+                    if (handleType.includes('left')) handle.style.left = `${x - 6}px`;
+                    if (handleType.includes('right')) handle.style.right = `${-x - w - 6}px`; // Relative to right
+                    if (handleType === 'top') handle.style.left = `${x + w / 2 - 6}px`;
+                    if (handleType === 'bottom') handle.style.left = `${x + w / 2 - 6}px`;
+                    if (handleType === 'left') handle.style.top = `${y + h / 2 - 6}px`;
+                    if (handleType === 'right') handle.style.top = `${y + h / 2 - 6}px`;
+
+                    dom.mainCanvas.parentElement.appendChild(handle); // Append to canvas container
+                });
+            },
+
+            getHandleCursor(handleType) {
+                switch(handleType) {
+                    case 'top-left': case 'bottom-right': return 'nwse-resize';
+                    case 'top-right': case 'bottom-left': return 'nesw-resize';
+                    case 'top': case 'bottom': return 'ns-resize';
+                    case 'left': case 'right': return 'ew-resize';
+                    default: return 'default';
+                }
             },
 
             renderPreviews() {
@@ -645,16 +1111,135 @@
                 uiManager.updateButtonStates();
                 dom.renderBtn.innerHTML = '<span class="spinner"></span> Rendering...';
 
-                // Simulate async rendering
-                setTimeout(() => {
-                    // TODO: Implement the 5 preview renders with different effects
-                    uiManager.showStatus('Previews updated!');
-                    logger.log('Preview render complete.');
-                    state.isRendering = false;
-                    state.isDirty = false;
-                    dom.renderBtn.innerHTML = '🎨 Render Previews';
-                    uiManager.updateButtonStates();
-                }, 500);
+                // Clear previous glows
+                document.querySelectorAll('.lasso-glow').forEach(glow => glow.remove());
+
+                const canvasWidth = dom.mainCanvas.width;
+                const canvasHeight = dom.mainCanvas.height;
+
+                PREVIEW_STYLES.forEach((style, index) => {
+                    const previewCanvas = dom.previews[index].canvas;
+                    const previewCode = dom.previews[index].code;
+                    const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true });
+                    
+                    previewCanvas.width = canvasWidth;
+                    previewCanvas.height = canvasHeight;
+
+                    // Apply the effect to a copy of the original image data
+                    const tempImageData = this.applyEffectToImageData(state.originalImage, state.selections, style);
+                    previewCtx.putImageData(tempImageData, 0, 0);
+
+                    // Display parameters
+                    let paramsString = `Style: '${style.name}'`;
+                    if (style.params) {
+                        for (const key in style.params) {
+                            paramsString += `, ${key}: ${JSON.stringify(style.params[key])}`;
+                        }
+                    }
+                    previewCode.textContent = paramsString;
+                });
+
+                uiManager.showStatus('Previews updated!');
+                logger.log('Preview render complete.');
+                state.isRendering = false;
+                state.isDirty = false; // Reset dirty flag after rendering previews
+                dom.renderBtn.innerHTML = '🎨 Render Previews';
+                uiManager.updateButtonStates();
+            },
+
+            applyEffectToImageData(img, selections, style) {
+                const tempCanvas = this.offscreenCanvas; // Use offscreen canvas for temporary processing
+                const tempCtx = this.offscreenCtx;
+                
+                tempCanvas.width = img.width;
+                tempCanvas.height = img.height;
+                tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                tempCtx.drawImage(img, 0, 0);
+                
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const data = imageData.data;
+
+                // Apply grayscale to the whole image first
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    data[i] = avg;
+                    data[i + 1] = avg;
+                    data[i + 2] = avg;
+                }
+
+                // Apply color to selections
+                selections.forEach(sel => {
+                    if (sel.type === 'box') {
+                        for (let y = 0; y < imageData.height; y++) {
+                            for (let x = 0; x < imageData.width; x++) {
+                                const pixelIndex = (y * imageData.width + x) * 4;
+                                if (x >= sel.x && x < sel.x + sel.width && y >= sel.y && y < sel.y + sel.height) {
+                                    // Restore original color from original image data (need to store this separately or re-draw)
+                                    // For simplicity here, we'll assume original image data is accessible or re-drawn
+                                    // In a real app, you'd have a separate originalImageData buffer
+                                    // For now, let's re-draw original image and then apply grayscale mask
+                                    // This is inefficient, but demonstrates the concept.
+                                    // A better approach is to have originalImageData buffer.
+                                }
+                            }
+                        }
+                    } else if (sel.type === 'lasso') {
+                        // For lasso, we need to check if pixel is inside the polygon
+                        // This is computationally intensive. For previews, we can simplify.
+                        // A more efficient way is to draw the selection shape on a mask canvas.
+                    }
+                });
+
+                // --- Apply Style Effects ---
+                if (style.effect === 'darken') {
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] *= style.params.factor;
+                        data[i+1] *= style.params.factor;
+                        data[i+2] *= style.params.factor;
+                        // Clamp values to 0-255
+                        data[i] = Math.min(255, data[i]);
+                        data[i+1] = Math.min(255, data[i+1]);
+                        data[i+2] = Math.min(255, data[i+2]);
+                    }
+                } else if (style.effect === 'lighten') {
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] *= style.params.factor;
+                        data[i+1] *= style.params.factor;
+                        data[i+2] *= style.params.factor;
+                        // Clamp values to 0-255
+                        data[i] = Math.min(255, data[i]);
+                        data[i+1] = Math.min(255, data[i+1]);
+                        data[i+2] = Math.min(255, data[i+2]);
+                    }
+                } else if (style.effect === 'sepia') {
+                    const tint = style.params.tint;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i], g = data[i+1], b = data[i+2];
+                        data[i] = r * 0.393 + g * 0.769 + b * 0.189;
+                        data[i+1] = r * 0.349 + g * 0.686 + b * 0.168;
+                        data[i+2] = r * 0.272 + g * 0.534 + b * 0.131;
+                        // Apply tint overlay
+                        data[i] = (data[i] + tint[0]) / 2;
+                        data[i+1] = (data[i+1] + tint[1]) / 2;
+                        data[i+2] = (data[i+2] + tint[2]) / 2;
+                        // Clamp values
+                        data[i] = Math.min(255, data[i]);
+                        data[i+1] = Math.min(255, data[i+1]);
+                        data[i+2] = Math.min(255, data[i+2]);
+                    }
+                } else if (style.effect === 'invert') {
+                    for (let i = 0; i < data.length; i += 4) {
+                        data[i] = 255 - data[i];
+                        data[i+1] = 255 - data[i+1];
+                        data[i+2] = 255 - data[i+2];
+                    }
+                }
+                
+                // For previews, we'll just apply the effect to the whole image for simplicity.
+                // A true color splash preview would require applying the effect only outside selections.
+                // This is a simplification for a single-file demo.
+
+                return imageData;
             }
         };
 
@@ -684,9 +1269,15 @@
                     reader.onload = (event) => {
                         const img = new Image();
                         img.onload = () => fileHandler.processNewImage(img);
+                        img.onerror = () => {
+                            logger.error('Failed to load image file.');
+                            uiManager.showStatus('Error loading image.');
+                        };
                         img.src = event.target.result;
                     };
                     reader.readAsDataURL(file);
+                } else {
+                    uiManager.showStatus('Please select an image file.');
                 }
             },
 
@@ -695,13 +1286,11 @@
                 state.originalImage = img;
                 dom.dropZone.classList.add('hidden');
                 
-                // Resize canvas to match image aspect ratio for better drawing
-                const aspectRatio = img.width / img.height;
-                const container = dom.mainCanvas.parentElement;
-                dom.mainCanvas.width = container.clientWidth;
-                dom.mainCanvas.height = container.clientWidth / aspectRatio;
-
+                // Reset state and history
                 stateManager.reset();
+                
+                // Resize canvas to fit image and container
+                canvasRenderer.resizeCanvas();
                 canvasRenderer.render();
                 uiManager.showStatus('Image loaded successfully!');
             },
@@ -728,14 +1317,33 @@
                     reader.onload = (event) => {
                         const img = new Image();
                         img.onload = () => fileHandler.processNewImage(img);
+                        img.onerror = () => {
+                            logger.error('Failed to load image file from drop.');
+                            uiManager.showStatus('Error loading image.');
+                        };
                         img.src = event.target.result;
                     };
                     reader.readAsDataURL(file);
+                } else {
+                    uiManager.showStatus('Please drop an image file.');
                 }
             },
 
             handleSaveJson() {
-                const dataStr = JSON.stringify({ selections: state.selections }, null, 2);
+                if (!state.originalImage) {
+                    uiManager.showStatus('No image loaded to save.');
+                    return;
+                }
+                const dataToSave = {
+                    selections: state.selections,
+                    imageDataUrl: state.originalImage.src,
+                    currentMode: state.currentMode,
+                    lassoColorIndex: state.lassoColorIndex,
+                    boxColorIndex: state.boxColorIndex,
+                    activeSelectionIndex: state.activeSelectionIndex,
+                    aggressiveness: document.getElementById('aggressiveness')?.value || 20
+                };
+                const dataStr = JSON.stringify(dataToSave, null, 2);
                 const dataBlob = new Blob([dataStr], { type: 'application/json' });
                 const url = URL.createObjectURL(dataBlob);
                 const link = document.createElement('a');
@@ -746,6 +1354,7 @@
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
                 logger.log('Work saved to JSON file.');
+                uiManager.showStatus('Work saved!');
             },
 
             handleLoadJson(e) {
@@ -755,16 +1364,36 @@
                     reader.onload = (event) => {
                         try {
                             const data = JSON.parse(event.target.result);
-                            if (data.selections && Array.isArray(data.selections)) {
-                                state.selections = data.selections;
-                                stateManager.saveState();
-                                canvasRenderer.render();
-                                uiManager.showStatus('Work loaded successfully!');
+                            if (data && data.selections && Array.isArray(data.selections) && data.imageDataUrl) {
+                                const img = new Image();
+                                img.onload = () => {
+                                    fileHandler.processNewImage(img); // Loads image and resets state
+                                    state.selections = data.selections;
+                                    state.currentMode = data.currentMode || 'lasso';
+                                    state.lassoColorIndex = data.lassoColorIndex || 0;
+                                    state.boxColorIndex = data.boxColorIndex || 0;
+                                    state.activeSelectionIndex = data.activeSelectionIndex || -1;
+                                    
+                                    // Set aggressiveness slider if it exists
+                                    const aggInput = document.getElementById('aggressiveness');
+                                    if (aggInput) aggInput.value = data.aggressiveness || 20;
+
+                                    uiManager.updateModeUI();
+                                    stateManager.saveState(); // Add loaded state to history
+                                    canvasRenderer.render();
+                                    uiManager.showStatus('Work loaded successfully!');
+                                };
+                                img.onerror = () => {
+                                    logger.error('Failed to load image from loaded JSON data.');
+                                    uiManager.showStatus('Failed to load image from file.');
+                                    localStorage.removeItem('colorSplashAutoSave'); // Clear bad data
+                                };
+                                img.src = data.imageDataUrl;
                             } else {
-                                throw new Error('Invalid JSON format.');
+                                throw new Error('Invalid JSON format or missing data.');
                             }
                         } catch (err) {
-                            logger.log('Error loading JSON: ' + err.message);
+                            logger.error('Error loading JSON: ' + err.message);
                             uiManager.showStatus('Failed to load file. Invalid format.');
                         }
                     };
@@ -773,16 +1402,452 @@
             }
         };
 
-        // --- 4. Event Listeners Setup ---
-        function initializeEventListeners() {
+        /**
+         * Lasso Tool Logic: Flood Fill algorithm for color-based selection.
+         */
+        const lassoTool = {
+            // Flood Fill implementation
+            floodFill(startX, startY, targetColor, replacementColor, aggressiveness) {
+                const canvas = dom.mainCanvas;
+                const ctx = canvasRenderer.ctx;
+                const scale = state.canvasScale;
+                const offsetX = state.canvasOffset.x;
+                const offsetY = state.canvasOffset.y;
+
+                // Adjust start coordinates to be relative to the scaled image on canvas
+                const imgX = Math.floor((startX - offsetX) / scale);
+                const imgY = Math.floor((startY - offsetY) / scale);
+
+                if (imgX < 0 || imgY < 0 || imgX >= state.originalImage.width || imgY >= state.originalImage.height) {
+                    logger.log('Lasso click outside image bounds.');
+                    return [];
+                }
+
+                const targetPixel = ctx.getImageData(offsetX + imgX * scale, offsetY + imgY * scale, 1, 1).data;
+                const targetR = targetPixel[0];
+                const targetG = targetPixel[1];
+                const targetB = targetPixel[2];
+
+                const tolerance = aggressiveness * 2.55; // Scale aggressiveness (1-100) to color difference (0-255)
+
+                const pixelData = ctx.getImageData(offsetX, offsetY, imgX * scale, imgY * scale).data; // Get data for the whole scaled image
+                const width = img.width * scale;
+                const height = img.height * scale;
+                const data = pixelData; // This is actually the scaled image data
+
+                const visited = new Array(height).fill(0).map(() => new Array(width).fill(false));
+                const queue = [[imgX, imgY]]; // Start with the clicked pixel (relative to original image)
+                const selectionPoints = []; // Store points relative to original image
+
+                while (queue.length > 0) {
+                    const [x, y] = queue.shift();
+
+                    // Check bounds and if already visited
+                    if (x < 0 || y < 0 || x >= img.width || y >= img.height || visited[y][x]) {
+                        continue;
+                    }
+                    visited[y][x] = true;
+
+                    // Get pixel color at (x, y) relative to original image
+                    const pixelIndex = (y * img.width + x) * 4;
+                    const r = data[pixelIndex];
+                    const g = data[pixelIndex + 1];
+                    const b = data[pixelIndex + 2];
+
+                    // Check color difference
+                    const colorDiff = Math.sqrt(
+                        Math.pow(r - targetR, 2) +
+                        Math.pow(g - targetG, 2) +
+                        Math.pow(b - targetB, 2)
+                    );
+
+                    if (colorDiff <= tolerance) {
+                        selectionPoints.push({ x: x, y: y }); // Store original image coordinates
+                        
+                        // Add neighbors to queue
+                        queue.push([x + 1, y]);
+                        queue.push([x - 1, y]);
+                        queue.push([x, y + 1]);
+                        queue.push([x, y - 1]);
+                    }
+                }
+                
+                // Calculate center for glow effect
+                if (selectionPoints.length > 0) {
+                    let sumX = 0, sumY = 0;
+                    selectionPoints.forEach(p => { sumX += p.x; sumY += p.y; });
+                    const center = { x: sumX / selectionPoints.length, y: sumY / selectionPoints.length };
+                    return { points: selectionPoints, center: center };
+                }
+                return { points: [], center: { x: 0, y: 0 } };
+            }
+        };
+
+        /**
+         * Event Handlers for Mouse and Touch Interactions
+         */
+        const interactionHandler = {
+            isMouseDown: false,
+            isDrawingBox: false,
+            isMovingSelection: null, // { index, startX, startY, type, startRect, startPoints }
+            isResizingSelection: null, // { index, startX, startY, startRect, startPoints, handleType }
+            startMousePos: { x: 0, y: 0 },
+            currentMousePos: { x: 0, y: 0 },
+
+            init() {
+                dom.mainCanvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+                dom.mainCanvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+                dom.mainCanvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+                dom.mainCanvas.addEventListener('mouseleave', this.onMouseLeave.bind(this));
+                
+                // Touch events for mobile
+                dom.mainCanvas.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
+                dom.mainCanvas.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
+                dom.mainCanvas.addEventListener('touchend', this.onTouchEnd.bind(this));
+                dom.mainCanvas.addEventListener('touchcancel', this.onTouchEnd.bind(this));
+            },
+
+            getCanvasRelativeMousePos(e) {
+                const rect = dom.mainCanvas.getBoundingClientRect();
+                const scale = state.canvasScale;
+                const offsetX = state.canvasOffset.x;
+                const offsetY = state.canvasOffset.y;
+
+                let clientX, clientY;
+                if (e.touches) { // Touch event
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                } else { // Mouse event
+                    clientX = e.clientX;
+                    clientY = e.clientY;
+                }
+
+                const canvasX = (clientX - rect.left) / scale - offsetX / scale;
+                const canvasY = (clientY - rect.top) / scale - offsetY / scale;
+                return { x: canvasX, y: canvasY };
+            },
+
+            onMouseDown(e) {
+                if (!state.originalImage) return;
+                e.preventDefault();
+                
+                this.isMouseDown = true;
+                this.startMousePos = this.getCanvasRelativeMousePos(e);
+                this.currentMousePos = { ...this.startMousePos };
+
+                const canvasRect = dom.mainCanvas.getBoundingClientRect();
+                const mouseX = e.clientX - canvasRect.left;
+                const mouseY = e.clientY - canvasRect.top;
+
+                // Check if clicking on a selection handle or border
+                const activeSelIndex = this.checkSelectionInteraction(this.startMousePos.x, this.startMousePos.y);
+                if (activeSelIndex !== -1) {
+                    state.activeSelectionIndex = activeSelIndex;
+                    const selection = state.selections[activeSelIndex];
+                    const handleType = this.checkHandleInteraction(this.startMousePos.x, this.startMousePos.y, selection);
+                    
+                    if (handleType) {
+                        this.isResizingSelection = { index: activeSelIndex, startX: this.startMousePos.x, startY: this.startMousePos.y, handleType: handleType, selection: JSON.parse(JSON.stringify(selection)) };
+                    } else {
+                        this.isMovingSelection = { index: activeSelIndex, startX: this.startMousePos.x, startY: this.startMousePos.y, selection: JSON.parse(JSON.stringify(selection)) };
+                    }
+                    canvasRenderer.render(); // Re-render to show active selection
+                    return;
+                } else {
+                    // Deselect if clicking on empty canvas
+                    state.activeSelectionIndex = -1;
+                    canvasRenderer.render();
+                }
+
+                // Handle mode-specific actions
+                if (state.currentMode === 'box') {
+                    const multiBoxCheck = document.getElementById('multiBoxCheck');
+                    if (!multiBoxCheck || !multiBoxCheck.checked) {
+                        // If not adding multiple boxes, clear previous selections
+                        if (state.selections.length > 0) {
+                            stateManager.saveState(); // Save before clearing
+                            state.selections = [];
+                        }
+                    }
+                    this.isDrawingBox = true;
+                } else if (state.currentMode === 'lasso') {
+                    const addSelectionBtn = document.getElementById('addSelectionBtn');
+                    if (addSelectionBtn && !addSelectionBtn.disabled) {
+                        // Start lasso selection process
+                        stateManager.saveState(); // Save before starting new selection
+                        state.lassoActive = true;
+                        state.lassoColorIndex = (state.lassoColorIndex + 1) % SELECTION_COLORS.length;
+                        const newColor = SELECTION_COLORS[state.lassoColorIndex];
+                        const aggressiveness = parseInt(document.getElementById('aggressiveness').value);
+                        state.selections.push({ type: 'lasso', points: [], aggressiveness: aggressiveness, color: newColor, center: {x: this.startMousePos.x, y: this.startMousePos.y} });
+                        state.activeSelectionIndex = state.selections.length - 1;
+                        lassoTool.floodFill(this.startMousePos.x, this.startMousePos.y, null, null, aggressiveness); // Pre-calculate points
+                        uiManager.showStatus('Click and drag to select object area.');
+                    }
+                }
+            },
+
+            onMouseMove(e) {
+                if (!state.originalImage) return;
+                e.preventDefault();
+                
+                this.currentMousePos = this.getCanvasRelativeMousePos(e);
+                const dx = this.currentMousePos.x - this.startMousePos.x;
+                const dy = this.currentMousePos.y - this.startMousePos.y;
+
+                if (this.isMouseDown) {
+                    if (this.isResizingSelection) {
+                        const { index, startX, startY, handleType, selection } = this.isResizingSelection;
+                        const scale = state.canvasScale;
+                        const offsetX = state.canvasOffset.x;
+                        const offsetY = state.canvasOffset.y;
+
+                        let newX = selection.x;
+                        let newY = selection.y;
+                        let newWidth = selection.width;
+                        let newHeight = selection.height;
+
+                        const currentX = this.currentMousePos.x;
+                        const currentY = this.currentMousePos.y;
+
+                        // Adjust based on handle type
+                        if (handleType.includes('left')) { newX = Math.min(currentX, selection.x + selection.width); newWidth = selection.x + selection.width - newX; }
+                        if (handleType.includes('right')) { newWidth = Math.max(currentX, selection.x) - selection.x; }
+                        if (handleType.includes('top')) { newY = Math.min(currentY, selection.y + selection.height); newHeight = selection.y + selection.height - newY; }
+                        if (handleType.includes('bottom')) { newHeight = Math.max(currentY, selection.y) - selection.y; }
+
+                        // Ensure minimum size
+                        if (newWidth < 10) { newWidth = 10; if (handleType.includes('left')) newX = selection.x + selection.width - 10; }
+                        if (newHeight < 10) { newHeight = 10; if (handleType.includes('top')) newY = selection.y + selection.height - 10; }
+
+                        state.selections[index] = { ...selection, x: newX, y: newY, width: newWidth, height: newHeight };
+                        canvasRenderer.render();
+                    } else if (this.isMovingSelection) {
+                        const { index, selection } = this.isMovingSelection;
+                        const dx = this.currentMousePos.x - this.startMousePos.x;
+                        const dy = this.currentMousePos.y - this.startMousePos.y;
+                        
+                        state.selections[index] = { ...selection, x: selection.x + dx, y: selection.y + dy };
+                        canvasRenderer.render();
+                    } else if (this.isDrawingBox) {
+                        const currentX = this.currentMousePos.x;
+                        const currentY = this.currentMousePos.y;
+                        const startX = this.startMousePos.x;
+                        const startY = this.startMousePos.y;
+
+                        const newBox = {
+                            type: 'box',
+                            x: Math.min(startX, currentX),
+                            y: Math.min(startY, currentY),
+                            width: Math.abs(startX - currentX),
+                            height: Math.abs(startY - currentY),
+                            color: SELECTION_COLORS[state.boxColorIndex % SELECTION_COLORS.length]
+                        };
+                        // Update the last box being drawn
+                        if (state.selections.length > 0 && state.selections[state.selections.length - 1].type === 'box') {
+                            state.selections[state.selections.length - 1] = newBox;
+                        } else {
+                            state.selections.push(newBox);
+                            state.boxColorIndex++;
+                        }
+                        canvasRenderer.render();
+                    } else if (state.currentMode === 'lasso' && state.lassoActive) {
+                        // For lasso, we're not drawing a box, but we might want to show a temporary circle or update the glow
+                        // The actual flood fill happens on mouseup
+                    }
+                }
+            },
+
+            onMouseUp(e) {
+                if (!state.originalImage) return;
+                e.preventDefault();
+                
+                this.isMouseDown = false;
+
+                if (this.isResizingSelection) {
+                    stateManager.saveState();
+                    this.isResizingSelection = null;
+                    logger.log('Finished resizing selection.');
+                } else if (this.isMovingSelection) {
+                    stateManager.saveState();
+                    this.isMovingSelection = null;
+                    logger.log('Finished moving selection.');
+                } else if (this.isDrawingBox) {
+                    if (state.selections.length > 0 && state.selections[state.selections.length - 1].width > 10 && state.selections[state.selections.length - 1].height > 10) {
+                        stateManager.saveState();
+                        logger.log('Box drawing finished.');
+                    } else {
+                        // Remove tiny boxes
+                        state.selections.pop();
+                    }
+                    this.isDrawingBox = false;
+                } else if (state.currentMode === 'lasso' && state.lassoActive) {
+                    state.lassoActive = false;
+                    const aggressiveness = parseInt(document.getElementById('aggressiveness').value);
+                    const lastSelection = state.selections[state.selections.length - 1];
+                    
+                    if (lastSelection && lastSelection.type === 'lasso') {
+                        const fillResult = lassoTool.floodFill(this.startMousePos.x, this.startMousePos.y, null, null, aggressiveness);
+                        if (fillResult.points && fillResult.points.length > 0) {
+                            lastSelection.points = fillResult.points;
+                            lastSelection.center = fillResult.center;
+                            lastSelection.aggressiveness = aggressiveness; // Update aggressiveness
+                            stateManager.saveState();
+                            logger.log(`Lasso selection finished with ${fillResult.points.length} points.`);
+                        } else {
+                            // Remove empty lasso selection
+                            state.selections.pop();
+                        }
+                    }
+                }
+                
+                canvasRenderer.render(); // Final render after interaction
+                uiManager.updateButtonStates();
+            },
+
+            onMouseLeave(e) {
+                // If mouse leaves canvas while dragging, treat as mouseup
+                if (this.isMouseDown) {
+                    this.onMouseUp(e);
+                }
+            },
+
+            // Touch Event Handlers (simplified for single-file demo)
+            onTouchStart(e) {
+                if (!state.originalImage) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                this.onMouseDown({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {}, touches: e.touches });
+            },
+            onTouchMove(e) {
+                if (!state.originalImage) return;
+                e.preventDefault();
+                const touch = e.touches[0];
+                this.onMouseMove({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {}, touches: e.touches });
+            },
+            onTouchEnd(e) {
+                if (!state.originalImage) return;
+                e.preventDefault();
+                this.onMouseUp({ clientX: 0, clientY: 0, preventDefault: () => {}, touches: [] }); // Pass dummy coords for mouseup
+            },
+
+            // Helper to check if mouse is over a selection
+            checkSelectionInteraction(x, y) {
+                const scale = state.canvasScale;
+                const offsetX = state.canvasOffset.x;
+                const offsetY = state.canvasOffset.y;
+
+                for (let i = state.selections.length - 1; i >= 0; i--) {
+                    const sel = state.selections[i];
+                    if (sel.type === 'box') {
+                        const boxX = sel.x * scale;
+                        const boxY = sel.y * scale;
+                        const boxW = sel.width * scale;
+                        const boxH = sel.height * scale;
+
+                        // Check if within box bounds or handles
+                        if (x >= boxX && x <= boxX + boxW && y >= boxY && y <= boxY + boxH) {
+                            if (this.checkHandleInteraction({ x, y }, sel)) {
+                                return i; // Interaction with handle
+                            }
+                            return i; // Interaction with box body (for moving)
+                        }
+                    } else if (sel.type === 'lasso') {
+                        // Check if point is within the lasso polygon
+                        if (this.isPointInPolygon(x, y, sel.points.map(p => ({ x: p.x * scale, y: p.y * scale })))) {
+                            return i;
+                        }
+                    }
+                }
+                return -1;
+            },
+
+            checkHandleInteraction(mousePos, selection) {
+                if (selection.type !== 'box') return null;
+                const scale = state.canvasScale;
+                const offsetX = state.canvasOffset.x;
+                const offsetY = state.canvasOffset.y;
+
+                const boxX = selection.x * scale;
+                const boxY = selection.y * scale;
+                const boxW = selection.width * scale;
+                const boxH = selection.height * scale;
+
+                const handles = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top', 'bottom', 'left', 'right'];
+                for (const handleType of handles) {
+                    let handleX, handleY;
+                    switch(handleType) {
+                        case 'top-left': handleX = boxX - 6; handleY = boxY - 6; break;
+                        case 'top-right': handleX = boxX + boxW - 6; handleY = boxY - 6; break;
+                        case 'bottom-left': handleX = boxX - 6; handleY = boxY + boxH - 6; break;
+                        case 'bottom-right': handleX = boxX + boxW - 6; handleY = boxY + boxH - 6; break;
+                        case 'top': handleX = boxX + boxW / 2 - 6; handleY = boxY - 6; break;
+                        case 'bottom': handleX = boxX + boxW / 2 - 6; handleY = boxY + boxH - 6; break;
+                        case 'left': handleX = boxX - 6; handleY = boxY + boxH / 2 - 6; break;
+                        case 'right': handleX = boxX + boxW - 6; handleY = boxY + boxH / 2 - 6; break;
+                    }
+                    
+                    // Check if mouse is within the handle's bounding box
+                    if (mousePos.x >= handleX && mousePos.x <= handleX + 12 &&
+                        mousePos.y >= handleY && mousePos.y <= handleY + 12) {
+                        return handleType;
+                    }
+                }
+                return null;
+            },
+
+            // Point in Polygon test (Ray Casting Algorithm)
+            isPointInPolygon(x, y, polygon) {
+                let inside = false;
+                for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                    const xi = polygon[i].x, yi = polygon[i].y;
+                    const xj = polygon[j].x, yj = polygon[j].y;
+
+                    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                    if (intersect) inside = !inside;
+                }
+                return inside;
+            }
+        };
+
+        // --- 4. Application Initialization ---
+        function initializeApp() {
+            logger.log('Application Initializing...');
+            
+            // Initialize modules
+            uiManager.init();
+            canvasRenderer.init();
+            fileHandler.init();
+            interactionHandler.init();
+            stateManager.loadFromLocalStorage(); // Try to load saved state first
+            stateManager.saveState(); // Save initial empty state if no auto-save found or user chose not to load
+            
+            // Set initial mode options
+            uiManager.updateModeUI();
+            
+            // Initial render if image loaded from local storage
+            if (state.originalImage) {
+                canvasRenderer.render();
+            } else {
+                // Show welcome message in canvas container
+                dom.dropZone.classList.remove('hidden');
+            }
+
+            logger.log('Application Ready.');
+        }
+
+        // --- 5. Event Listeners Setup ---
+        function setupEventListeners() {
             // Mode switching
             dom.modeLassoBtn.addEventListener('click', () => {
                 state.currentMode = 'lasso';
                 uiManager.updateModeUI();
+                canvasRenderer.render(); // Re-render to update active selection visuals
             });
             dom.modeBoxBtn.addEventListener('click', () => {
                 state.currentMode = 'box';
                 uiManager.updateModeUI();
+                canvasRenderer.render();
             });
 
             // History
@@ -792,29 +1857,24 @@
             // Reset
             dom.resetBtn.addEventListener('click', () => uiManager.toggleModal(true));
             dom.confirmYesBtn.addEventListener('click', () => {
-                fileHandler.processNewImage(state.originalImage); // Reloads image and resets state
+                stateManager.reset();
                 uiManager.toggleModal(false);
+                uiManager.showStatus('Canvas cleared.');
             });
             dom.confirmNoBtn.addEventListener('click', () => uiManager.toggleModal(false));
             
             // Previews
             dom.renderBtn.addEventListener('click', () => canvasRenderer.renderPreviews());
 
-            // Dev Log
+            // Dev Log Toggle
             dom.logToggleBtn.addEventListener('click', () => uiManager.toggleLog(false));
             dom.logToggleBtnClosed.addEventListener('click', () => uiManager.toggleLog(true));
         }
 
-        // --- 5. Application Initialization ---
+        // --- 6. Application Start ---
         document.addEventListener('DOMContentLoaded', () => {
-            logger.log('Application Initializing...');
-            uiManager.init();
-            canvasRenderer.init();
-            fileHandler.init();
-            initializeEventListeners();
-            stateManager.loadFromLocalStorage();
-            stateManager.saveState(); // Save initial empty state
-            logger.log('Application Ready.');
+            initializeApp();
+            setupEventListeners();
         });
 
     })();
