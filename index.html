@@ -1,804 +1,918 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Color Splash Pro X</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Color Splash Pro X</title>
+
 <!--
-/*
 ================================================================================
-|                                                                              |
-|                      TECHNICAL SPECIFICATION SHEET (v4.0)                      |
-|                                                                              |
+TECHNICAL SPECIFICATION SHEET (v4.0 → v1.6.0 IMPLEMENTATION)
+Latest directives first (top), earlier mandates below.
+
+LATEST ORDERS (This iteration)
+- Fix lasso so it actually selects (freehand path), allow many lasso objects.
+- Add explicit button to add more lassoed objects.
+- Non-selected area must be filtered (grayscale variants); selected stays color.
+- Add "Render Now" button; priority = main preview first, then thumbnails.
+- Show a loading/progress bar that resets on any change and finishes when render fires.
+- Replace sepia/invert with better filters (use useful grayscale combos).
+- Improve initial UI; add settings + logs; keep all working features.
+- Show current code version top-right and bump when updating file.
+- Box: create by click-drag OR single click (default size), move & resize via handles (8).
+
+PREVIOUS ORDERS (kept)
+- Dual panel: left Editor (original, interactive), right Live Preview (non-interactive).
+- Preset gallery of 5 thumbnails; clicking one applies its effect+aggressiveness.
+- Undo/Redo, Start Over (confirm), Upload/Drag&Drop prompt, auto-friendly UX.
+- Save/Load project to JSON (image data+selections), optional localStorage later.
+- Visible developer log.
+
+CORE
+- State/history manager with debounced preview render.
+- Zoom (wheel), Pan (Space+drag). Multiple selections with independent types.
 ================================================================================
-
-//------------------------------------------------------------------------------
-// USER PROMPT (MOST RECENT - The Mandate for this Implementation)
-//------------------------------------------------------------------------------
-// "This works extremely bad. I am increasingly disappointed in your ability to
-// follow simple instructions. Provide the full technical spec sheets along with
-// my prompts with details as comments in the top of the codeblock outlining the
-// technical specsheet. The updated technical spec sheet should have the most
-// recent comments with orders on top and go down afterwards."
-//
-// "There should now be two images one to the left is the original loaded image
-// here is where the boxes and stuff will be drawn. Then to the right of it
-// should be the preview image after applied effects. If the user does not like
-// it he could just select a different preview from the 5 images below and then
-// that image and its settings should be 'loaded into' the preview aka its
-// settings used on the original image. It should also have different
-// aggressiveness settings on the select tools in the previews along with the
-// gray scale differences. !IMPORTANT improve this app much more and output
-// full working code"
-//
-//------------------------------------------------------------------------------
-// USER PROMPT (PREVIOUS - The Dual-Panel Concept)
-//------------------------------------------------------------------------------
-// Summary: The user introduced the core concept of a two-panel UI.
-// - Left Panel (Editor): Shows the original image. This is where all selections
-//   (boxes, lassos) are drawn and manipulated.
-// - Right Panel (Preview): Shows the final result with effects applied.
-// - Preset Gallery: 5 smaller images below act as presets. Clicking a preset
-//   applies its settings (effect AND aggressiveness) to the main Preview Panel.
-//
-//------------------------------------------------------------------------------
-// USER PROMPT (PREVIOUS - Adding Polish and Robustness)
-//------------------------------------------------------------------------------
-// Summary: The user requested features for a more professional and forgiving UX.
-// - Undo/Redo functionality.
-// - A "Start Over" button with a confirmation dialog.
-// - A welcoming initial state with a clear "Upload" or "Drag & Drop" prompt.
-// - Auto-saving work to the browser's local storage.
-// - A visible developer log for easier debugging.
-//
-//------------------------------------------------------------------------------
-// USER PROMPT (INITIAL - Core Functionality)
-//------------------------------------------------------------------------------
-// Summary: The initial request for the color splash application.
-// - Upload an image and show a preview.
-// - Allow user to draw one or more boxes to define areas to keep in color.
-// - The rest of the image should become grayscale.
-// - Introduce a "Find Object" (Lasso) tool with an "aggressiveness" setting.
-// - Allow multiple selections with different settings.
-// - Show 5 smaller previews with variations of the effect.
-// - Ability to save/load the project settings (selections) to a JSON file.
-
-================================================================================
-|                                                                              |
-|                      FINAL IMPLEMENTATION BLUEPRINT                          |
-|                                                                              |
-================================================================================
-
-1.  **UI ARCHITECTURE: DUAL-PANEL WORKFLOW**
-    -   **Editor Panel (Left):** Displays the original, full-color image. This is the interactive workspace. It supports:
-        -   **Zooming:** Via mouse wheel.
-        -   **Panning:** Via holding the Spacebar and dragging.
-        -   **Selection Drawing:** All new selections (Box or Smart Select) are created here.
-        -   **Selection Manipulation:** Existing selections can be moved, resized (boxes), and deleted. The active selection is clearly highlighted.
-    -   **Preview Panel (Right):** Displays the final, rendered output in real-time. It is non-interactive and reflects the combination of selections from the Editor and the active preset from the gallery.
-
-2.  **CORE FEATURE: INTERACTIVE PRESET GALLERY**
-    -   A gallery of 5 presets is displayed at the bottom.
-    -   Each preset is a distinct object containing two key properties:
-        1.  `effect`: The type of filter to apply to the background (e.g., 'grayscale', 'sepia').
-        2.  `aggressiveness`: A numerical value (1-100) that controls the size/influence of the "Smart Select" tool.
-    -   Clicking a preset makes it "active" (indicated by a highlight).
-    -   When a preset becomes active, the Preview Panel immediately re-renders using the new `effect` and `aggressiveness` settings.
-
-3.  **SELECTION TOOLS & MANAGEMENT**
-    -   **Smart Select Tool ('Lasso'):** Creates a circular selection area. The radius of this circle is directly proportional to the `aggressiveness` value of the currently active preset.
-    -   **Box Select Tool:** Creates a rectangular selection area.
-    -   **Active Selection:** Only one selection can be active at a time, indicated by a bright, solid border and resize handles (for boxes).
-    -   **Manipulation:**
-        -   The active selection can be moved by dragging its body.
-        -   Active boxes can be resized using corner/edge handles.
-        -   The active selection can be deleted by pressing the 'Delete' or 'Backspace' key or a dedicated UI button.
-
-4.  **RENDERING PIPELINE**
-    -   The Editor and Preview canvases are rendered independently for performance.
-    -   **Editor Rendering:** Draws the original image with the current pan/zoom transform, then overlays the visual representations of all selections.
-    -   **Preview Rendering:** A high-performance, multi-step process:
-        1.  An offscreen "mask canvas" is created in memory. All user selections are drawn onto this mask in solid white.
-        2.  The main Preview canvas is filled with the filtered version of the original image (e.g., fully grayscale).
-        3.  The original, full-color image is then drawn on top, but using the mask canvas to "clip" it, so only the parts corresponding to the selections are drawn in color.
-    -   **Debouncing:** The Preview render function is debounced to ensure the UI remains fluid and responsive during rapid edits.
-
-5.  **STATE & HISTORY MANAGEMENT**
-    -   A central `state` object holds all application data (image, selections, transform, etc.).
-    -   A `history` array stores snapshots of the state after every significant action (add, move, delete selection).
-    -   This array enables robust, multi-level Undo (Ctrl+Z) and Redo (Ctrl+Y) functionality.
-
-6.  **FILE & SESSION MANAGEMENT**
-    -   **Save/Load:** The entire application state, including selections and the image data URL, can be saved to a JSON file and loaded back in, restoring a session perfectly.
-    -   **Auto-Save:** (Optional but recommended for future versions) The state could be periodically saved to the browser's Local Storage.
-
-*/
 -->
+
+  <style>
+    :root{
+      --bg:#f0f2f5;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
+      --border:#d7dbe1;--shadow:rgba(0,0,0,.08);--shadow-2:rgba(0,0,0,.14);
+      --danger:#fa383e;--ok:#19a974;--warn:#ffb700;
+      --sel:#1877f2;--sel-ghost:rgba(24,119,242,.2);
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;
+    }
+    header{
+      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;z-index:3;
+    }
+    .brand{font-weight:800;color:var(--primary);letter-spacing:.2px}
+    .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.25rem .5rem;border-radius:6px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+    .group{display:flex;gap:.5rem;align-items:center}
+    button{
+      padding:.45rem .8rem;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer;
+      font-weight:600;font-size:.9rem;display:inline-flex;gap:.45rem;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,.02);
+      transition:transform .05s ease, border-color .2s, background .2s, color .2s;
+    }
+    button:hover:not(:disabled){border-color:var(--primary);background:#f6faff}
+    button:active{transform:translateY(1px)}
+    button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+    button.primary:hover{background:var(--primary-2);color:#fff}
+    button.active{background:var(--primary);border-color:var(--primary);color:#fff}
+    button.danger{border-color:#ffd2d6;background:#fff0f1;color:#b00020}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .icon{font-size:1.1rem}
+
+    .shell{flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-height:0}
+    .panel{
+      background:var(--panel);border-radius:12px;box-shadow:0 2px 8px var(--shadow);
+      display:flex;flex-direction:column;min-height:0;overflow:hidden
+    }
+    .panel-h{
+      padding:.6rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
+      display:flex;align-items:center;justify-content:center;gap:.5rem
+    }
+    .panel-c{flex:1;position:relative;background:#e9eef6;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .placeholder{color:var(--muted);font-weight:600;opacity:.85}
+    .canvas-wrap{position:relative;width:100%;height:100%;overflow:hidden;cursor:grab}
+    .canvas-wrap.panning{cursor:grabbing}
+    canvas{display:block;background:#fff}
+    #editor-canvas{position:absolute;transform-origin:top left}
+
+    /* Presets & bottom bar */
+    .bottom{
+      display:grid;grid-template-columns:2fr 1fr;gap:10px;min-height:140px
+    }
+    .presets.panel{min-height:140px}
+    .presets-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:10px}
+    .preset{cursor:pointer;text-align:center}
+    .preset canvas{
+      width:100%;height:auto;aspect-ratio:16/9;background:#f3f5f9;border-radius:10px;border:3px solid transparent;
+      box-shadow:0 1px 3px var(--shadow);transition:all .15s
+    }
+    .preset:hover canvas{transform:translateY(-2px)}
+    .preset.active canvas{border-color:var(--primary);box-shadow:0 6px 14px var(--shadow-2)}
+    .preset label{display:block;margin-top:4px;font-size:.78rem;color:var(--muted)}
+
+    /* Right column: settings + logs */
+    .side.panel{min-height:140px}
+    .side-c{display:grid;grid-template-rows:auto 1fr}
+    .settings{padding:10px;border-bottom:1px solid var(--border)}
+    .set-row{display:flex;align-items:center;gap:10px;margin:.35rem 0}
+    .set-row input[type=range]{width:180px}
+    .logs{position:relative}
+    .log-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);background:#fafbff}
+    .log-body{height:100%;padding:10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.8rem;background:#fff}
+    .log-line{white-space:pre-wrap;color:#2d3748;margin:.15rem 0}
+
+    /* Progress bar */
+    .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden}
+    .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .12s}
+
+    /* Resize handles for boxes */
+    .handle{position:absolute;width:10px;height:10px;border:2px solid #fff;background:var(--primary);border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+    /* (Handles drawn on editor canvas overlay instead of DOM for performance; CSS here for reference) */
+
+    /* Version badge (fixed) */
+    .version-pin{
+      position:fixed;top:8px;right:8px;background:#101828;color:#fff;font-size:.75rem;padding:.25rem .5rem;border-radius:6px;
+      box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:4;opacity:.9
+    }
+
+    .hidden{display:none!important}
+  </style>
 </head>
 <body>
-    <div id="app-container">
-        <header>
-            <h1>Color Splash Pro X</h1>
-            <div class="controls-area">
-                <div class="control-group">
-                    <button id="uploadBtn" class="primary" title="Upload a new image">📤 Upload</button>
-                    <button id="saveBtn" title="Save your work as a JSON file" disabled>💾 Save</button>
-                    <button id="loadBtn" title="Load work from a JSON file">📂 Load</button>
-                </div>
-                <div class="control-group">
-                    <button id="undoBtn" title="Undo last action (Ctrl+Z)" disabled>↩️ Undo</button>
-                    <button id="redoBtn" title="Redo last action (Ctrl+Y)" disabled>↪️ Redo</button>
-                </div>
-                <div class="control-group">
-                    <button id="modeLassoBtn" class="active" title="Smart Select Tool (S)">✨ Smart Select</button>
-                    <button id="modeBoxBtn" title="Box Select Tool (B)">🔲 Box Select</button>
-                </div>
-                 <div class="control-group">
-                    <button id="deleteSelectionBtn" title="Delete selected object (Delete/Backspace)" disabled>🗑️ Delete</button>
-                </div>
-            </div>
-        </header>
+  <header>
+    <div class="brand">Color Splash Pro X</div>
+    <div class="toolbar">
+      <div class="group">
+        <button id="uploadBtn" class="primary"><span class="icon">📤</span>Upload</button>
+        <button id="saveBtn" title="Save project JSON" disabled>💾 Save</button>
+        <button id="loadBtn" title="Load project JSON">📂 Load</button>
+        <button id="startOverBtn" class="danger" title="Clear image & selections" disabled>🧹 Start Over</button>
+      </div>
+      <div class="group">
+        <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>↩️ Undo</button>
+        <button id="redoBtn" title="Redo (Ctrl+Y)" disabled>↪️ Redo</button>
+      </div>
+      <div class="group">
+        <button id="modeLassoBtn" class="active" title="Smart Select (Lasso) (S)">✨ Lasso</button>
+        <button id="newLassoBtn" title="Add new lasso object">➕ New Lasso</button>
+        <button id="modeBoxBtn" title="Box Select (B)">🔲 Box</button>
+        <button id="deleteSelectionBtn" title="Delete active selection (Del)" disabled>🗑️ Delete</button>
+      </div>
+      <div class="group">
+        <button id="renderNowBtn" title="Render immediately">⚡ Render Now</button>
+      </div>
+    </div>
+    <span class="badge" id="versionBadge">v?</span>
+  </header>
 
-        <main class="main-content">
-            <div class="workspace">
-                <div class="panel">
-                    <div class="panel-header">EDITOR (Original Image) - Hold Spacebar to Pan, Scroll to Zoom</div>
-                    <div class="panel-content">
-                        <div id="editor-wrapper" class="canvas-wrapper">
-                            <canvas id="editor-canvas"></canvas>
-                            <div id="editor-placeholder" class="placeholder">Upload an image to begin</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="panel">
-                    <div class="panel-header">LIVE PREVIEW</div>
-                    <div class="panel-content">
-                        <canvas id="preview-canvas"></canvas>
-                        <div id="preview-placeholder" class="placeholder">Your result will appear here</div>
-                    </div>
-                </div>
-            </div>
+  <div class="version-pin" id="versionPin">v?</div>
 
-            <div class="presets-gallery">
-                <div id="presets-container" class="presets-container">
-                    <!-- Presets will be generated here -->
-                </div>
-            </div>
-        </main>
+  <div class="shell">
+    <div class="row">
+      <!-- EDITOR -->
+      <section class="panel">
+        <div class="panel-h">EDITOR — Original (Space = Pan · Wheel = Zoom)</div>
+        <div class="panel-c">
+          <div id="editor-wrap" class="canvas-wrap">
+            <canvas id="editor-canvas"></canvas>
+          </div>
+          <div id="editor-empty" class="placeholder">Drop an image here or click “Upload”</div>
+          <div class="progress-wrap hidden" id="progressEditor"><div class="progress" id="progressBar"></div></div>
+        </div>
+      </section>
+
+      <!-- PREVIEW -->
+      <section class="panel">
+        <div class="panel-h">LIVE PREVIEW</div>
+        <div class="panel-c">
+          <canvas id="preview-canvas"></canvas>
+          <div id="preview-empty" class="placeholder">Your result will appear here</div>
+        </div>
+      </section>
     </div>
 
-    <input type="file" id="fileInput" accept="image/*" class="hidden">
-    <input type="file" id="loadInput" accept=".json,.txt" class="hidden">
+    <div class="bottom">
+      <!-- PRESETS -->
+      <section class="presets panel">
+        <div class="panel-h">PRESET GALLERY (click to apply)</div>
+        <div id="presets" class="presets-grid"></div>
+      </section>
 
-    <style>
-        :root {
-            --bg-color: #f0f2f5;
-            --panel-bg: #ffffff;
-            --text-primary: #1c1e21;
-            --text-secondary: #606770;
-            --primary-color: #1877f2;
-            --primary-hover: #166fe5;
-            --border-color: #ccd0d5;
-            --shadow-light: rgba(0, 0, 0, 0.1);
-            --shadow-medium: rgba(0, 0, 0, 0.15);
-            --selection-color: #1877f2;
-            --selection-inactive: rgba(255, 255, 255, 0.7);
-            --delete-color: #fa383e;
-        }
+      <!-- SETTINGS + LOGS -->
+      <section class="side panel">
+        <div class="side-c">
+          <div class="settings">
+            <div class="set-row">
+              <strong>Settings</strong>
+              <button id="toggleLogsBtn" style="margin-left:auto">📝 Toggle Logs</button>
+            </div>
+            <div class="set-row">
+              <label>Aggressiveness</label>
+              <input type="range" id="aggrRange" min="1" max="100" value="35"/>
+              <span id="aggrVal">35</span>
+            </div>
+            <div class="set-row">
+              <label>Filter Strength</label>
+              <input type="range" id="fltRange" min="0" max="100" value="100"/>
+              <span id="fltVal">100%</span>
+            </div>
+          </div>
+          <div class="logs">
+            <div class="log-header">
+              <div><strong>Developer Log</strong></div>
+              <div><button id="clearLogsBtn">Clear</button></div>
+            </div>
+            <div id="logBody" class="log-body"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
 
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  <!-- hidden inputs -->
+  <input type="file" id="fileInput" accept="image/*" class="hidden"/>
+  <input type="file" id="loadInput" accept=".json,.txt" class="hidden"/>
 
-        body, #app-container {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
+  <script>
+  (function(){
+    'use strict';
 
-        header {
-            background-color: var(--panel-bg);
-            box-shadow: 0 2px 4px var(--shadow-light);
-            padding: 0.75rem 1.5rem;
-            z-index: 100;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0;
-        }
-        header h1 {
-            margin: 0;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
-        }
+    // -------------------------- META / VERSION --------------------------
+    const APP_VERSION = "1.6.0";
+    document.getElementById('versionBadge').textContent = APP_VERSION;
+    document.getElementById('versionPin').textContent = APP_VERSION;
 
-        .main-content {
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 1rem;
-            gap: 1rem;
-            overflow: hidden;
-        }
+    // -------------------------- DOM --------------------------
+    const dom = {
+      uploadBtn: $('#uploadBtn'), saveBtn: $('#saveBtn'), loadBtn: $('#loadBtn'), startOverBtn: $('#startOverBtn'),
+      undoBtn: $('#undoBtn'), redoBtn: $('#redoBtn'),
+      modeLassoBtn: $('#modeLassoBtn'), newLassoBtn: $('#newLassoBtn'), modeBoxBtn: $('#modeBoxBtn'),
+      deleteSelectionBtn: $('#deleteSelectionBtn'), renderNowBtn: $('#renderNowBtn'),
+      fileInput: $('#fileInput'), loadInput: $('#loadInput'),
+      editorWrap: $('#editor-wrap'), editorCanvas: $('#editor-canvas'), editorEmpty: $('#editor-empty'),
+      previewCanvas: $('#preview-canvas'), previewEmpty: $('#preview-empty'),
+      presets: $('#presets'),
+      progressWrap: $('#progressEditor'), progressBar: $('#progressBar'),
+      aggrRange: $('#aggrRange'), aggrVal: $('#aggrVal'),
+      fltRange: $('#fltRange'), fltVal: $('#fltVal'),
+      toggleLogsBtn: $('#toggleLogsBtn'), clearLogsBtn: $('#clearLogsBtn'), logBody: $('#logBody')
+    };
 
-        .workspace {
-            flex-grow: 1;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            overflow: hidden;
-        }
+    // -------------------------- UTIL --------------------------
+    function $(id){ return document.getElementById(id); }
+    const log = (...args)=> {
+      const line = document.createElement('div');
+      line.className='log-line';
+      line.textContent = `[${new Date().toLocaleTimeString()}] ` + args.join(' ');
+      dom.logBody.appendChild(line);
+      dom.logBody.scrollTop = dom.logBody.scrollHeight;
+      //console.log(...args);
+    };
+    const clamp = (v, a, b)=>Math.max(a, Math.min(b, v));
+    const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t = setTimeout(()=>fn(...a), ms); }; };
 
-        .panel {
-            background-color: var(--panel-bg);
-            border-radius: 12px;
-            box-shadow: 0 2px 8px var(--shadow-light);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        .panel-header {
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border-color);
-            font-weight: 600;
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            text-align: center;
-        }
-        .panel-content {
-            flex-grow: 1;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: var(--bg-color);
-        }
+    // -------------------------- STATE --------------------------
+    const state = {
+      image: null,
+      selections: [], // {type:'box', x,y,w,h} OR {type:'lasso', points:[{x,y}...], cx, cy}
+      activeIndex: -1,
+      mode: 'lasso',
+      transform: {x:0,y:0,scale:1},
+      isPanning: false,
+      drag: { active:false, startX:0,startY:0, kind:null, handle:null},
+      history: [], histIndex: -1,
+      activePreset: 0,
+      filters: [
+        {name:'Classic',   css:(s)=>`grayscale(${s}%)`},
+        {name:'High Pop',  css:(s)=>`grayscale(${s}%) contrast(1.35) brightness(1.05)`},
+        {name:'Soft Film', css:(s)=>`grayscale(${s}%) brightness(1.03) contrast(1.08) saturate(.9)`},
+        {name:'Crunchy',   css:(s)=>`grayscale(${s}%) contrast(1.55)`},
+        {name:'Dreamy',    css:(s)=>`grayscale(${s}%) blur(0.6px) brightness(1.06)`}
+      ],
+      aggr: 35,
+      filtStrength: 100,
+      rendering: false
+    };
 
-        .presets-gallery {
-            flex-shrink: 0;
-            background-color: var(--panel-bg);
-            padding: 1rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px var(--shadow-light);
-        }
+    const editor = {
+      c: dom.editorCanvas,
+      ctx: dom.editorCanvas.getContext('2d'),
+      overlay: null, // drawn within same canvas
+      updateSize(){
+        const w = dom.editorWrap.clientWidth, h = dom.editorWrap.clientHeight;
+        this.c.width = w; this.c.height = h;
+      },
+      imgToCanvasSpace(clientX, clientY){
+        const r = this.c.getBoundingClientRect();
+        const x = (clientX - r.left - state.transform.x)/state.transform.scale;
+        const y = (clientY - r.top - state.transform.y)/state.transform.scale;
+        return {x,y};
+      },
+      draw(){
+        if(!state.image){ return; }
+        const {ctx,c} = this;
+        ctx.clearRect(0,0,c.width,c.height);
+        ctx.save();
+        ctx.translate(state.transform.x, state.transform.y);
+        ctx.scale(state.transform.scale, state.transform.scale);
+        ctx.drawImage(state.image, 0, 0);
+        // selections
+        state.selections.forEach((sel,i)=>{
+          const active = i===state.activeIndex;
+          ctx.save();
+          ctx.lineWidth = 2 / state.transform.scale;
+          ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.35)';
+          ctx.fillStyle = active ? 'rgba(24,119,242,.08)' : 'rgba(255,255,255,.15)';
+          if(sel.type==='box'){
+            ctx.strokeRect(sel.x, sel.y, sel.w, sel.h);
+            ctx.fillRect(sel.x, sel.y, sel.w, sel.h);
+            if(active) drawBoxHandles(ctx, sel);
+          } else {
+            // lasso
+            ctx.beginPath();
+            sel.points.forEach((p,idx)=> idx?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.fill();
+          }
+          ctx.restore();
+        });
+        ctx.restore();
+      }
+    };
 
-        .controls-area {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.75rem;
-            align-items: center;
-        }
-        .control-group {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-        button {
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            background-color: #fff;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        button:hover:not(:disabled) {
-            border-color: var(--primary-color);
-            color: var(--primary-color);
-            background-color: #f0f8ff;
-        }
-        button.primary {
-            background-color: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
-        button.primary:hover:not(:disabled) {
-            background-color: var(--primary-hover);
-            color: white;
-        }
-        button.active {
-            background-color: var(--primary-color);
-            color: white;
-            border-color: var(--primary-color);
-        }
-        button:disabled {
-            background-color: var(--bg-color);
-            color: var(--text-secondary);
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
+    const preview = {
+      c: dom.previewCanvas,
+      ctx: dom.previewCanvas.getContext('2d'),
+      mask: document.createElement('canvas'),
+      maskCtx: null,
+      init(){ this.maskCtx = this.mask.getContext('2d'); },
+      layout(){
+        if(!state.image){ return; }
+        const wrap = dom.previewCanvas.parentElement;
+        const aspect = state.image.width / state.image.height;
+        let w = wrap.clientWidth, h = w/aspect;
+        if(h>wrap.clientHeight){ h = wrap.clientHeight; w = h*aspect; }
+        this.c.width = w; this.c.height = h;
+      },
+      render(){
+        if(!state.image) return;
 
-        .canvas-wrapper {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            cursor: grab;
-        }
-        .canvas-wrapper.panning { cursor: grabbing; }
-        .canvas-wrapper.crosshair { cursor: crosshair; }
+        // 1) build mask at original image size
+        this.mask.width = state.image.width;
+        this.mask.height = state.image.height;
+        const m = this.maskCtx;
+        m.clearRect(0,0,this.mask.width,this.mask.height);
+        m.fillStyle = '#fff';
+        state.selections.forEach(sel=>{
+          if(sel.type==='box'){
+            m.fillRect(sel.x, sel.y, sel.w, sel.h);
+          } else {
+            m.beginPath();
+            sel.points.forEach((p,i)=> i?m.lineTo(p.x,p.y):m.moveTo(p.x,p.y));
+            m.closePath();
+            m.fill();
+          }
+        });
 
-        canvas {
-            display: block;
-            background-color: #fff;
-        }
-        #editor-canvas {
-            position: absolute;
-            transform-origin: top left;
-        }
+        // 2) create filtered background (draw directly to preview canvas)
+        const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
+        const ctx = this.ctx;
+        ctx.clearRect(0,0,this.c.width,this.c.height);
+        ctx.save();
+        ctx.filter = cssFilter;
+        ctx.drawImage(state.image, 0, 0, this.c.width, this.c.height);
+        ctx.restore();
 
-        .placeholder {
-            text-align: center;
-            color: var(--text-secondary);
-            font-size: 1.2rem;
-            padding: 2rem;
-        }
+        // 3) create color-only selection onto temp canvas: original image masked by selection
+        const temp = document.createElement('canvas');
+        temp.width = state.image.width;
+        temp.height = state.image.height;
+        const tctx = temp.getContext('2d');
+        tctx.drawImage(state.image, 0,0);
+        tctx.globalCompositeOperation = 'destination-in';
+        tctx.drawImage(this.mask, 0,0);
+        tctx.globalCompositeOperation = 'source-over';
 
-        .presets-container {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 1rem;
-        }
-        .preset-item {
-            text-align: center;
-            cursor: pointer;
-            transition: transform 0.2s ease;
-        }
-        .preset-item:hover {
-            transform: translateY(-4px);
-        }
-        .preset-item canvas {
-            width: 100%;
-            height: auto;
-            aspect-ratio: 16/9;
-            background-color: var(--bg-color);
-            border-radius: 8px;
-            border: 3px solid transparent;
-            box-shadow: 0 1px 3px var(--shadow-light);
-            transition: all 0.2s ease;
-        }
-        .preset-item.active canvas {
-            border-color: var(--primary-color);
-            box-shadow: 0 4px 12px var(--shadow-medium);
-        }
-        .preset-item code {
-            display: block;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            margin-top: 0.25rem;
-            font-weight: 500;
-        }
+        // 4) draw that masked color back on the filtered background (scaled to preview size)
+        ctx.drawImage(temp, 0,0, this.c.width, this.c.height);
+      }
+    };
 
-        .hidden { display: none !important; }
-    </style>
+    // -------------------------- PRESETS --------------------------
+    function renderPresets(){
+      dom.presets.innerHTML = '';
+      state.filters.forEach((flt, idx)=>{
+        const item = document.createElement('div');
+        item.className = 'preset' + (idx===state.activePreset?' active':'');
+        item.innerHTML = `<canvas></canvas><label>${flt.name}</label>`;
+        const c = item.querySelector('canvas'), cctx = c.getContext('2d');
+        if(state.image){
+          // make small thumb
+          const aspect = state.image.width/state.image.height;
+          c.width = 220; c.height = Math.round(220/aspect);
+          cctx.save();
+          cctx.filter = flt.css(state.filtStrength);
+          cctx.drawImage(state.image, 0,0,c.width,c.height);
+          cctx.restore();
+          // overlay a faint sample lasso circle for vibe
+          cctx.globalAlpha = .12;
+          cctx.fillStyle='#000'; cctx.beginPath();
+          cctx.arc(c.width*.65, c.height*.45, Math.min(c.width,c.height)*.15, 0, Math.PI*2);
+          cctx.fill(); cctx.globalAlpha = 1;
+        } else {
+          c.width=220; c.height=130;
+          cctx.fillStyle = '#f3f5f9'; cctx.fillRect(0,0,c.width,c.height);
+          cctx.fillStyle='#9aa3b2'; cctx.fillText('Load image to preview', 20, 70);
+        }
+        item.addEventListener('click', ()=>{
+          state.activePreset = idx;
+          dom.aggrRange.value = state.aggr; // unchanged, but re-render anyway
+          updateSettingsUI();
+          renderPresets();
+          schedulePreviewRender(true);
+          log('Preset:', flt.name);
+        });
+        dom.presets.appendChild(item);
+      });
+    }
 
-    <script>
-    (function() {
-        'use strict';
-
-        const dom = {
-            uploadBtn: document.getElementById('uploadBtn'),
-            saveBtn: document.getElementById('saveBtn'),
-            loadBtn: document.getElementById('loadBtn'),
-            undoBtn: document.getElementById('undoBtn'),
-            redoBtn: document.getElementById('redoBtn'),
-            modeLassoBtn: document.getElementById('modeLassoBtn'),
-            modeBoxBtn: document.getElementById('modeBoxBtn'),
-            deleteSelectionBtn: document.getElementById('deleteSelectionBtn'),
-            editorWrapper: document.getElementById('editor-wrapper'),
-            editorCanvas: document.getElementById('editor-canvas'),
-            editorPlaceholder: document.getElementById('editor-placeholder'),
-            previewCanvas: document.getElementById('preview-canvas'),
-            previewPlaceholder: document.getElementById('preview-placeholder'),
-            presetsContainer: document.getElementById('presets-container'),
-            fileInput: document.getElementById('fileInput'),
-            loadInput: document.getElementById('loadInput'),
+    // -------------------------- HISTORY --------------------------
+    const history = {
+      save(){
+        // strip image object but keep dataURL
+        const snapshot = {
+          selections: JSON.parse(JSON.stringify(state.selections)),
+          activeIndex: state.activeIndex,
+          transform: {...state.transform},
+          activePreset: state.activePreset,
+          aggr: state.aggr,
+          filtStrength: state.filtStrength
         };
+        if(state.histIndex < state.history.length-1) state.history = state.history.slice(0,state.histIndex+1);
+        state.history.push(JSON.stringify(snapshot));
+        state.histIndex++;
+        refreshButtons();
+      },
+      load(i){
+        const snap = JSON.parse(state.history[i]);
+        state.selections = snap.selections;
+        state.activeIndex = snap.activeIndex;
+        state.transform = snap.transform;
+        state.activePreset = snap.activePreset ?? state.activePreset;
+        state.aggr = snap.aggr ?? state.aggr;
+        state.filtStrength = snap.filtStrength ?? state.filtStrength;
+        editor.draw(); schedulePreviewRender(true); renderPresets(); updateSettingsUI(); refreshButtons();
+      },
+      undo(){ if(state.histIndex>0){ state.histIndex--; history.load(state.histIndex); } },
+      redo(){ if(state.histIndex<state.history.length-1){ state.histIndex++; history.load(state.histIndex); } }
+    };
 
-        let state = {
-            originalImage: null,
-            selections: [],
-            activeSelectionIndex: -1,
-            currentMode: 'lasso',
-            history: [],
-            historyIndex: -1,
-            transform: { x: 0, y: 0, scale: 1 },
-            isPanning: false,
-            activePresetIndex: 0,
+    // -------------------------- SELECTION HELPERS --------------------------
+    function defaultBoxAt(x,y){
+      const s = Math.max(40, Math.min(state.image.width, state.image.height)*0.12);
+      return {type:'box', x: clamp(x,0,state.image.width-1), y: clamp(y,0,state.image.height-1), w: s, h: s};
+    }
+    function hitBoxHandle(sel, x, y){
+      // returns one of: 'nw','n','ne','e','se','s','sw','w' or null
+      const pad = 8 / state.transform.scale;
+      const pts = [
+        ['nw', sel.x, sel.y],
+        ['n',  sel.x+sel.w/2, sel.y],
+        ['ne', sel.x+sel.w, sel.y],
+        ['e',  sel.x+sel.w, sel.y+sel.h/2],
+        ['se', sel.x+sel.w, sel.y+sel.h],
+        ['s',  sel.x+sel.w/2, sel.y+sel.h],
+        ['sw', sel.x, sel.y+sel.h],
+        ['w',  sel.x, sel.y+sel.h/2],
+      ];
+      for(const [name, px, py] of pts){
+        if(Math.abs(x-px)<=pad && Math.abs(y-py)<=pad) return name;
+      }
+      return null;
+    }
+    function drawBoxHandles(ctx, sel){
+      const r = 6 / state.transform.scale;
+      const pts = [
+        [ sel.x, sel.y],[ sel.x+sel.w/2, sel.y],[ sel.x+sel.w, sel.y],
+        [ sel.x+sel.w, sel.y+sel.h/2],[ sel.x+sel.w, sel.y+sel.h],
+        [ sel.x+sel.w/2, sel.y+sel.h],[ sel.x, sel.y+sel.h],[ sel.x, sel.y+sel.h/2]
+      ];
+      ctx.fillStyle='#1877f2';
+      ctx.strokeStyle='#fff';
+      pts.forEach(([px,py])=>{
+        ctx.beginPath(); ctx.rect(px-r, py-r, r*2, r*2); ctx.fill(); ctx.stroke();
+      });
+    }
+    function pointInBox(sel, x, y){
+      return x>=sel.x && y>=sel.y && x<=sel.x+sel.w && y<=sel.y+sel.h;
+    }
+    function pointInLasso(sel, x, y){
+      // ray-casting
+      let inside = false;
+      const pts = sel.points;
+      for(let i=0,j=pts.length-1; i<pts.length; j=i++){
+        const xi=pts[i].x, yi=pts[i].y, xj=pts[j].x, yj=pts[j].y;
+        const intersect = ((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi);
+        if(intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // -------------------------- RENDER FLOW & PROGRESS --------------------------
+    let renderTick = 0, progressTimer=null, progressPhase=0;
+    function startProgress(){
+      dom.progressWrap.classList.remove('hidden');
+      progressPhase = 0; dom.progressBar.style.width = '0%';
+      clearInterval(progressTimer);
+      progressTimer = setInterval(()=>{
+        progressPhase = clamp(progressPhase + 7, 0, 85); // creep to 85% max while waiting
+        dom.progressBar.style.width = progressPhase + '%';
+      }, 80);
+    }
+    function finishProgress(){
+      clearInterval(progressTimer);
+      progressTimer = null;
+      dom.progressBar.style.width = '100%';
+      setTimeout(()=>{ dom.progressWrap.classList.add('hidden'); dom.progressBar.style.width='0%'; }, 250);
+    }
+
+    const renderPreviewDebounced = debounce(()=>{
+      if(!state.image) return;
+      state.rendering = true;
+      preview.layout();
+      preview.render();
+      state.rendering = false;
+      finishProgress();
+      renderPresets(); // thumbs after main preview
+      log('Preview rendered.');
+    }, 700);
+
+    function schedulePreviewRender(startProgressBar=false){
+      if(!state.image) return;
+      if(startProgressBar) startProgress();
+      renderPreviewDebounced();
+    }
+
+    // -------------------------- EVENT HANDLERS --------------------------
+    // upload / dragdrop
+    dom.uploadBtn.addEventListener('click', ()=>dom.fileInput.click());
+    dom.fileInput.addEventListener('change', onFileInput);
+    ['dragover','dragenter'].forEach(ev=>dom.editorWrap.addEventListener(ev,(e)=>{e.preventDefault();dom.editorWrap.classList.add('panning');}));
+    ['dragleave','drop'].forEach(ev=>dom.editorWrap.addEventListener(ev,(e)=>{e.preventDefault();dom.editorWrap.classList.remove('panning');}));
+    dom.editorWrap.addEventListener('drop', (e)=>{
+      e.preventDefault();
+      const f = e.dataTransfer.files?.[0];
+      if(f && f.type.startsWith('image/')) readImageFile(f);
+    });
+
+    function onFileInput(e){
+      const f = e.target.files[0];
+      if(f) readImageFile(f);
+    }
+    function readImageFile(file){
+      const r = new FileReader();
+      r.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          state.image = img;
+          state.selections = [];
+          state.activeIndex = -1;
+          state.transform = {x:0,y:0,scale:1};
+          dom.editorEmpty.classList.add('hidden');
+          dom.previewEmpty.classList.add('hidden');
+          editor.updateSize(); editor.draw(); preview.init();
+          renderPresets();
+          history.save();
+          refreshButtons();
+          schedulePreviewRender(true);
+          log('Image loaded:', file.name, `${img.width}x${img.height}`);
         };
+        img.src = r.result;
+      };
+      r.readAsDataURL(file);
+    }
 
-        const PRESETS = [
-            { name: 'Classic', effect: 'grayscale(100%)', aggressiveness: 25 },
-            { name: 'High Contrast', effect: 'grayscale(100%) contrast(1.5)', aggressiveness: 40 },
-            { name: 'Sepia Tone', effect: 'sepia(100%)', aggressiveness: 30 },
-            { name: 'Vivid', effect: 'grayscale(100%)', aggressiveness: 70 },
-            { name: 'Inverted', effect: 'invert(100%)', aggressiveness: 50 },
-        ];
+    // editor interactions
+    dom.editorWrap.addEventListener('mousedown', (e)=>{
+      if(!state.image) return;
+      const isSpace = state.isPanning;
+      if(isSpace){
+        state.drag = {active:true,kind:'pan', startX:e.clientX, startY:e.clientY, tx:state.transform.x, ty:state.transform.y};
+        dom.editorWrap.classList.add('panning'); return;
+      }
+      const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
 
-        const debounce = (func, delay) => {
-            let timeout;
-            return (...args) => {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => func.apply(this, args), delay);
-            };
-        };
+      // selection hit testing
+      let hitIndex = -1, hitHandle = null, hitKind='none';
+      for(let i=state.selections.length-1;i>=0;i--){
+        const sel = state.selections[i];
+        if(sel.type==='box'){
+          const h = hitBoxHandle(sel,p.x,p.y);
+          if(h){ hitIndex=i; hitHandle=h; hitKind='box-resize'; break; }
+          if(pointInBox(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
+        }else{
+          if(pointInLasso(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
+        }
+      }
 
-        const renderer = {
-            editorCtx: dom.editorCanvas.getContext('2d'),
-            previewCtx: dom.previewCanvas.getContext('2d'),
-            maskCanvas: document.createElement('canvas'),
-            
-            init() {
-                this.maskCtx = this.maskCanvas.getContext('2d');
-            },
+      if(hitIndex>=0){
+        // activate and start drag
+        state.activeIndex = hitIndex;
+        state.drag = {active:true, kind:hitKind, handle:hitHandle, startX:p.x, startY:p.y,
+                      ox:0, oy:0,
+                      snapshot: JSON.parse(JSON.stringify(state.selections[hitIndex]))};
+        editor.draw();
+        return;
+      }
 
-            renderAll() {
-                if (!state.originalImage) return;
-                this.renderEditor();
-                this.renderPreview();
-            },
+      // no hit: begin creating selection
+      state.activeIndex = state.selections.length; // new one
+      if(state.mode==='box'){
+        const sel = defaultBoxAt(p.x,p.y);
+        // if mouse moves -> resize from se corner; if just click -> keep default
+        state.selections.push(sel);
+        state.drag = {active:true,kind:'box-make', handle:'se', startX:p.x, startY:p.y};
+      } else {
+        // lasso freehand path
+        const sel = {type:'lasso', points:[p]};
+        state.selections.push(sel);
+        state.drag = {active:true,kind:'lasso-make', last:p};
+      }
+      editor.draw();
+    });
 
-            renderEditor() {
-                const { originalImage, transform, selections, activeSelectionIndex } = state;
-                const canvas = dom.editorCanvas;
-                const ctx = this.editorCtx;
+    dom.editorWrap.addEventListener('mousemove', (e)=>{
+      if(!state.image) return;
+      const cx = e.clientX, cy = e.clientY;
+      const p = editor.imgToCanvasSpace(cx,cy);
 
-                canvas.width = dom.editorWrapper.clientWidth;
-                canvas.height = dom.editorWrapper.clientHeight;
-                
-                ctx.save();
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.translate(transform.x, transform.y);
-                ctx.scale(transform.scale, transform.scale);
-                ctx.drawImage(originalImage, 0, 0);
+      if(state.drag.active){
+        switch(state.drag.kind){
+          case 'pan':{
+            state.transform.x = state.drag.tx + (cx - state.drag.startX);
+            state.transform.y = state.drag.ty + (cy - state.drag.startY);
+            editor.draw();
+            break;
+          }
+          case 'box-make':
+          case 'box-resize':{
+            const sel = state.selections[state.activeIndex];
+            let x0 = state.drag.snapshot? state.drag.snapshot.x : sel.x;
+            let y0 = state.drag.snapshot? state.drag.snapshot.y : sel.y;
+            let w0 = state.drag.snapshot? state.drag.snapshot.w : sel.w;
+            let h0 = state.drag.snapshot? state.drag.snapshot.h : sel.h;
 
-                // Draw selections
-                selections.forEach((sel, index) => {
-                    const isActive = index === activeSelectionIndex;
-                    ctx.strokeStyle = isActive ? 'var(--selection-color)' : 'var(--selection-inactive)';
-                    ctx.lineWidth = isActive ? 2 / transform.scale : 1 / transform.scale;
-                    ctx.setLineDash(isActive ? [] : [5 / transform.scale, 5 / transform.scale]);
+            const handle = state.drag.handle || 'se';
+            // compute new rect based on handle
+            const minSize = 5;
+            const right = x0 + w0, bottom = y0 + h0;
 
-                    if (sel.type === 'box') {
-                        ctx.strokeRect(sel.x, sel.y, sel.width, sel.height);
-                    } else if (sel.type === 'lasso') {
-                        const radius = this.getLassoRadius(PRESETS[state.activePresetIndex].aggressiveness);
-                        ctx.beginPath();
-                        ctx.arc(sel.x, sel.y, radius, 0, Math.PI * 2);
-                        ctx.stroke();
-                    }
-                });
-                ctx.restore();
-            },
+            let nx = x0, ny = y0, nw = w0, nh = h0;
 
-            renderPreview: debounce(function() {
-                const { originalImage, selections, activePresetIndex } = state;
-                if (!originalImage) return;
-
-                const preset = PRESETS[activePresetIndex];
-                const canvas = dom.previewCanvas;
-                const ctx = this.previewCtx;
-                const maskCanvas = this.maskCanvas;
-                const maskCtx = this.maskCtx;
-
-                const container = dom.previewCanvas.parentElement;
-                const aspect = originalImage.width / originalImage.height;
-                let w = container.clientWidth;
-                let h = w / aspect;
-                if (h > container.clientHeight) {
-                    h = container.clientHeight;
-                    w = h * aspect;
-                }
-                canvas.width = w;
-                canvas.height = h;
-                maskCanvas.width = originalImage.width;
-                maskCanvas.height = originalImage.height;
-
-                maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-                maskCtx.fillStyle = 'white';
-                selections.forEach(sel => {
-                    if (sel.type === 'box') {
-                        maskCtx.fillRect(sel.x, sel.y, sel.width, sel.height);
-                    } else if (sel.type === 'lasso') {
-                        const radius = this.getLassoRadius(preset.aggressiveness);
-                        maskCtx.beginPath();
-                        maskCtx.arc(sel.x, sel.y, radius, 0, Math.PI * 2);
-                        maskCtx.fill();
-                    }
-                });
-
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.save();
-                ctx.filter = preset.effect;
-                ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
-                ctx.restore();
-
-                ctx.save();
-                ctx.globalCompositeOperation = 'destination-in';
-                ctx.drawImage(maskCanvas, 0, 0, canvas.width, canvas.height);
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.drawImage(originalImage, 0, 0, canvas.width, canvas.height);
-                ctx.restore();
-            }, 150),
-
-            renderPresets() {
-                dom.presetsContainer.innerHTML = '';
-                PRESETS.forEach((preset, index) => {
-                    const item = document.createElement('div');
-                    item.className = 'preset-item';
-                    if (index === state.activePresetIndex) item.classList.add('active');
-                    item.innerHTML = `<canvas></canvas><code>${preset.name} (Agg: ${preset.aggressiveness})</code>`;
-                    
-                    const canvas = item.querySelector('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    if (state.originalImage) {
-                        const aspect = state.originalImage.width / state.originalImage.height;
-                        canvas.width = 200;
-                        canvas.height = 200 / aspect;
-                        ctx.save();
-                        ctx.filter = preset.effect;
-                        ctx.drawImage(state.originalImage, 0, 0, canvas.width, canvas.height);
-                        ctx.restore();
-                    }
-
-                    item.addEventListener('click', () => {
-                        state.activePresetIndex = index;
-                        this.renderPresets();
-                        this.renderPreview();
-                    });
-                    dom.presetsContainer.appendChild(item);
-                });
-            },
-            
-            getLassoRadius(aggressiveness) {
-                if (!state.originalImage) return 0;
-                const baseSize = Math.min(state.originalImage.width, state.originalImage.height);
-                return (aggressiveness / 100) * (baseSize / 8);
+            if(state.drag.kind==='box-make'){
+              // drag from initial point to current as SE handle
+              nx = Math.min(state.drag.startX, p.x);
+              ny = Math.min(state.drag.startY, p.y);
+              nw = Math.abs(p.x - state.drag.startX);
+              nh = Math.abs(p.y - state.drag.startY);
+            } else {
+              // resizing based on handle
+              if(handle.includes('n')){ ny = Math.min(bottom - minSize, p.y); nh = bottom - ny; }
+              if(handle.includes('s')){ nh = Math.max(minSize, p.y - y0); }
+              if(handle.includes('w')){ nx = Math.min(right - minSize, p.x); nw = right - nx; }
+              if(handle.includes('e')){ nw = Math.max(minSize, p.x - x0); }
             }
-        };
-
-        const interactionHandler = {
-            startPan: { x: 0, y: 0 },
-            startTransform: { x: 0, y: 0 },
-            isDrawing: false,
-            startDrawPos: { x: 0, y: 0 },
-
-            init() {
-                const wrapper = dom.editorWrapper;
-                wrapper.addEventListener('mousedown', this.onMouseDown.bind(this));
-                wrapper.addEventListener('mousemove', this.onMouseMove.bind(this));
-                window.addEventListener('mouseup', this.onMouseUp.bind(this));
-                wrapper.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
-                window.addEventListener('keydown', this.onKeyDown.bind(this));
-                window.addEventListener('keyup', this.onKeyUp.bind(this));
-            },
-
-            getMousePos(e) {
-                const rect = dom.editorCanvas.getBoundingClientRect();
-                return {
-                    x: (e.clientX - rect.left - state.transform.x) / state.transform.scale,
-                    y: (e.clientY - rect.top - state.transform.y) / state.transform.scale
-                };
-            },
-
-            onMouseDown(e) {
-                if (!state.originalImage) return;
-                if (state.isPanning) {
-                    this.startPan = { x: e.clientX, y: e.clientY };
-                    this.startTransform = { ...state.transform };
-                    return;
-                }
-                
-                this.isDrawing = true;
-                this.startDrawPos = this.getMousePos(e);
-                
-                const newSelection = {
-                    type: state.currentMode,
-                    x: this.startDrawPos.x,
-                    y: this.startDrawPos.y,
-                    width: 0,
-                    height: 0,
-                };
-                state.selections.push(newSelection);
-                state.activeSelectionIndex = state.selections.length - 1;
-                stateManager.saveState();
-                renderer.renderEditor();
-            },
-
-            onMouseMove(e) {
-                if (state.isPanning && e.buttons === 1) {
-                    const dx = e.clientX - this.startPan.x;
-                    const dy = e.clientY - this.startPan.y;
-                    state.transform.x = this.startTransform.x + dx;
-                    state.transform.y = this.startTransform.y + dy;
-                    renderer.renderEditor();
-                } else if (this.isDrawing) {
-                    const currentPos = this.getMousePos(e);
-                    const selection = state.selections[state.activeSelectionIndex];
-                    
-                    if (selection.type === 'box') {
-                        selection.width = currentPos.x - this.startDrawPos.x;
-                        selection.height = currentPos.y - this.startDrawPos.y;
-                        
-                        // Normalize for negative width/height
-                        if (selection.width < 0) {
-                            selection.x = currentPos.x;
-                            selection.width = -selection.width;
-                        }
-                        if (selection.height < 0) {
-                            selection.y = currentPos.y;
-                            selection.height = -selection.height;
-                        }
-                    }
-                    renderer.renderEditor();
-                    renderer.renderPreview();
-                }
-            },
-
-            onMouseUp() {
-                if (this.isDrawing) {
-                    this.isDrawing = false;
-                    const selection = state.selections[state.activeSelectionIndex];
-                    if (selection && selection.type === 'box' && (selection.width < 5 || selection.height < 5)) {
-                        state.selections.pop();
-                        state.activeSelectionIndex = -1;
-                    }
-                    stateManager.saveState();
-                    renderer.renderAll();
-                }
-            },
-
-            onWheel(e) {
-                if (!state.originalImage) return;
-                e.preventDefault();
-                const rect = dom.editorCanvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-
-                const zoomFactor = 1.1;
-                const zoom = e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
-                const newScale = state.transform.scale * zoom;
-
-                if (newScale < 0.1 || newScale > 20) return;
-
-                state.transform.x = mouseX - (mouseX - state.transform.x) * zoom;
-                state.transform.y = mouseY - (mouseY - state.transform.y) * zoom;
-                state.transform.scale = newScale;
-
-                renderer.renderEditor();
-            },
-
-            onKeyDown(e) {
-                if (e.code === 'Space' && !state.isPanning) {
-                    state.isPanning = true;
-                    dom.editorWrapper.classList.add('panning');
-                }
-                if ((e.key === 'Delete' || e.key === 'Backspace') && state.activeSelectionIndex !== -1) {
-                    state.selections.splice(state.activeSelectionIndex, 1);
-                    state.activeSelectionIndex = -1;
-                    stateManager.saveState();
-                    renderer.renderAll();
-                }
-                if (e.ctrlKey || e.metaKey) {
-                    if (e.key === 'z') { e.preventDefault(); stateManager.undo(); }
-                    if (e.key === 'y') { e.preventDefault(); stateManager.redo(); }
-                }
-                if (e.key.toLowerCase() === 's') { dom.modeLassoBtn.click(); }
-                if (e.key.toLowerCase() === 'b') { dom.modeBoxBtn.click(); }
-            },
-
-            onKeyUp(e) {
-                if (e.code === 'Space') {
-                    state.isPanning = false;
-                    dom.editorWrapper.classList.remove('panning');
-                }
+            Object.assign(sel, {x:nx, y:ny, w:nw, h:nh});
+            editor.draw(); schedulePreviewRender(true);
+            break;
+          }
+          case 'move':{
+            const sel = state.selections[state.activeIndex];
+            const dx = p.x - state.drag.startX, dy = p.y - state.drag.startY;
+            if(sel.type==='box'){
+              sel.x = state.drag.snapshot.x + dx;
+              sel.y = state.drag.snapshot.y + dy;
+            } else {
+              // move all points
+              sel.points = state.drag.snapshot.points.map(pt=>({x:pt.x+dx, y:pt.y+dy}));
             }
-        };
-
-        const stateManager = {
-            saveState() {
-                if (state.historyIndex < state.history.length - 1) {
-                    state.history = state.history.slice(0, state.historyIndex + 1);
-                }
-                state.history.push(JSON.stringify({
-                    selections: state.selections,
-                    activeSelectionIndex: state.activeSelectionIndex
-                }));
-                state.historyIndex++;
-                this.updateUI();
-            },
-            undo() {
-                if (state.historyIndex > 0) {
-                    state.historyIndex--;
-                    this.loadStateFromHistory();
-                }
-            },
-            redo() {
-                if (state.historyIndex < state.history.length - 1) {
-                    state.historyIndex++;
-                    this.loadStateFromHistory();
-                }
-            },
-            loadStateFromHistory() {
-                const snapshot = JSON.parse(state.history[state.historyIndex]);
-                state.selections = snapshot.selections;
-                state.activeSelectionIndex = snapshot.activeSelectionIndex;
-                renderer.renderAll();
-                this.updateUI();
-            },
-            updateUI() {
-                dom.undoBtn.disabled = state.historyIndex <= 0;
-                dom.redoBtn.disabled = state.historyIndex >= state.history.length - 1;
-                dom.deleteSelectionBtn.disabled = state.activeSelectionIndex === -1;
-                dom.saveBtn.disabled = !state.originalImage;
+            editor.draw(); schedulePreviewRender(true);
+            break;
+          }
+          case 'lasso-make':{
+            const sel = state.selections[state.activeIndex];
+            const last = state.drag.last;
+            const dist2 = (p.x-last.x)**2 + (p.y-last.y)**2;
+            if(dist2 > (2/state.transform.scale)**2){
+              sel.points.push(p);
+              state.drag.last = p;
+              editor.draw(); // live feedback
             }
-        };
-
-        function init() {
-            renderer.init();
-            interactionHandler.init();
-            renderer.renderPresets();
-
-            dom.uploadBtn.addEventListener('click', () => dom.fileInput.click());
-            dom.fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            state.originalImage = img;
-                            state.selections = [];
-                            state.activeSelectionIndex = -1;
-                            state.transform = { x: 0, y: 0, scale: 1 };
-                            dom.editorPlaceholder.classList.add('hidden');
-                            dom.previewPlaceholder.classList.add('hidden');
-                            renderer.renderAll();
-                            renderer.renderPresets();
-                            stateManager.saveState();
-                        };
-                        img.src = event.target.result;
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-
-            dom.modeLassoBtn.addEventListener('click', () => {
-                state.currentMode = 'lasso';
-                dom.modeLassoBtn.classList.add('active');
-                dom.modeBoxBtn.classList.remove('active');
-            });
-            dom.modeBoxBtn.addEventListener('click', () => {
-                state.currentMode = 'box';
-                dom.modeBoxBtn.classList.add('active');
-                dom.modeLassoBtn.classList.remove('active');
-            });
-            
-            dom.deleteSelectionBtn.addEventListener('click', () => {
-                if (state.activeSelectionIndex !== -1) {
-                    state.selections.splice(state.activeSelectionIndex, 1);
-                    state.activeSelectionIndex = -1;
-                    stateManager.saveState();
-                    renderer.renderAll();
-                }
-            });
-
-            window.addEventListener('resize', debounce(renderer.renderAll, 200));
-            
-            stateManager.updateUI();
+            break;
+          }
         }
+      }
+    });
 
-        init();
-    })();
-    </script>
+    window.addEventListener('mouseup', ()=>{
+      if(!state.image) return;
+      if(!state.drag.active) return;
+      // finish create / move / resize
+      const wasMake = (state.drag.kind==='box-make' || state.drag.kind==='lasso-make');
+      state.drag.active=false;
+      dom.editorWrap.classList.remove('panning');
+
+      // Cleanup too-small boxes or too-short lasso
+      const sel = state.selections[state.activeIndex];
+      if(sel){
+        if(sel.type==='box' && (sel.w<5 || sel.h<5)){
+          state.selections.splice(state.activeIndex,1);
+          state.activeIndex=-1;
+        }
+        if(sel.type==='lasso' && sel.points.length<3){
+          state.selections.splice(state.activeIndex,1);
+          state.activeIndex=-1;
+        }
+      }
+      editor.draw();
+      schedulePreviewRender(true);
+      history.save();
+      if(wasMake) log('Selection added:', sel? sel.type:'(discarded)');
+    });
+
+    // zoom
+    dom.editorWrap.addEventListener('wheel', (e)=>{
+      if(!state.image) return;
+      e.preventDefault();
+      const r = dom.editorCanvas.getBoundingClientRect();
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const zf = 1.1;
+      const zoom = e.deltaY < 0 ? zf : 1/zf;
+      const newScale = clamp(state.transform.scale * zoom, 0.1, 20);
+      state.transform.x = mx - (mx - state.transform.x)*zoom;
+      state.transform.y = my - (my - state.transform.y)*zoom;
+      state.transform.scale = newScale;
+      editor.draw();
+    }, {passive:false});
+
+    // keys
+    window.addEventListener('keydown', (e)=>{
+      if(e.code==='Space' && !state.isPanning){ state.isPanning=true; dom.editorWrap.classList.add('panning'); }
+      if((e.key==='Delete'||e.key==='Backspace') && state.activeIndex!==-1){
+        const removed = state.selections.splice(state.activeIndex,1)[0];
+        state.activeIndex=-1; editor.draw(); schedulePreviewRender(true); history.save();
+        log('Deleted selection:', removed?.type);
+      }
+      if(e.ctrlKey||e.metaKey){
+        if(e.key.toLowerCase()==='z'){ e.preventDefault(); history.undo(); }
+        if(e.key.toLowerCase()==='y'){ e.preventDefault(); history.redo(); }
+      }
+      if(e.key.toLowerCase()==='s'){ setMode('lasso'); }
+      if(e.key.toLowerCase()==='b'){ setMode('box'); }
+    });
+    window.addEventListener('keyup', (e)=>{ if(e.code==='Space'){ state.isPanning=false; dom.editorWrap.classList.remove('panning'); }});
+
+    // buttons
+    dom.modeLassoBtn.addEventListener('click', ()=>setMode('lasso'));
+    dom.newLassoBtn.addEventListener('click', ()=>{
+      setMode('lasso');
+      state.activeIndex = -1;
+      log('Ready to draw a new lasso. Click-drag freehand to close the shape.');
+    });
+    dom.modeBoxBtn.addEventListener('click', ()=>setMode('box'));
+    dom.deleteSelectionBtn.addEventListener('click', ()=>{
+      if(state.activeIndex!==-1){
+        const t = state.selections[state.activeIndex]?.type;
+        state.selections.splice(state.activeIndex,1);
+        state.activeIndex=-1; editor.draw(); schedulePreviewRender(true); history.save(); log('Deleted:', t);
+      }
+    });
+    dom.undoBtn.addEventListener('click', ()=>history.undo());
+    dom.redoBtn.addEventListener('click', ()=>history.redo());
+    dom.renderNowBtn.addEventListener('click', ()=>{
+      startProgress();
+      preview.layout(); preview.render(); finishProgress(); renderPresets(); log('Manual render complete.');
+    });
+
+    dom.startOverBtn.addEventListener('click', ()=>{
+      if(!state.image) return;
+      if(confirm('Clear the image and all selections?')){
+        state.image=null; state.selections=[]; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
+        dom.editorEmpty.classList.remove('hidden'); dom.previewEmpty.classList.remove('hidden');
+        editor.updateSize(); editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
+        preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
+        renderPresets(); refreshButtons(); log('Project cleared.');
+      }
+    });
+
+    dom.saveBtn.addEventListener('click', ()=>{
+      if(!state.image) return;
+      const dataURL = getCurrentImageDataURL();
+      const payload = {
+        app: 'Color Splash Pro X',
+        version: APP_VERSION,
+        imageDataURL: dataURL,
+        selections: state.selections,
+        activePreset: state.activePreset,
+        aggr: state.aggr,
+        filtStrength: state.filtStrength
+      };
+      const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `color-splash-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log('Saved project JSON.');
+    });
+
+    dom.loadBtn.addEventListener('click', ()=>dom.loadInput.click());
+    dom.loadInput.addEventListener('change', (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const r = new FileReader();
+      r.onload = ()=>{
+        try{
+          const obj = JSON.parse(r.result);
+          loadFromObject(obj);
+          log('Loaded project JSON.');
+        }catch(err){ alert('Invalid JSON file'); }
+      };
+      r.readAsText(f);
+    });
+
+    function getCurrentImageDataURL(){ // keep original image data as stored when uploaded
+      // If we want to persist exactly original, we need to keep the original dataURL on load
+      // Simpler: re-create from current <img> by drawing on a temp canvas
+      const c = document.createElement('canvas'); c.width = state.image.width; c.height = state.image.height;
+      const ctx = c.getContext('2d'); ctx.drawImage(state.image,0,0);
+      return c.toDataURL('image/png');
+    }
+
+    function loadFromObject(obj){
+      const img = new Image();
+      img.onload = ()=>{
+        state.image = img;
+        state.selections = obj.selections || [];
+        state.activeIndex = -1;
+        state.activePreset = obj.activePreset ?? 0;
+        state.aggr = obj.aggr ?? 35;
+        state.filtStrength = obj.filtStrength ?? 100;
+        dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
+        editor.updateSize(); editor.draw(); preview.init(); renderPresets(); updateSettingsUI();
+        state.history=[]; state.histIndex=-1; history.save(); refreshButtons();
+        schedulePreviewRender(true);
+      };
+      img.src = obj.imageDataURL;
+    }
+
+    // settings
+    dom.aggrRange.addEventListener('input', ()=>{
+      state.aggr = parseInt(dom.aggrRange.value,10);
+      updateSettingsUI();
+      schedulePreviewRender(true);
+    });
+    dom.fltRange.addEventListener('input', ()=>{
+      state.filtStrength = parseInt(dom.fltRange.value,10);
+      updateSettingsUI();
+      schedulePreviewRender(true);
+    });
+    function updateSettingsUI(){
+      dom.aggrVal.textContent = state.aggr;
+      dom.fltVal.textContent = state.filtStrength+'%';
+    }
+
+    // logs
+    let logsVisible = true;
+    dom.toggleLogsBtn.addEventListener('click', ()=>{
+      logsVisible = !logsVisible;
+      document.querySelector('.logs').style.display = logsVisible? 'block':'none';
+    });
+    dom.clearLogsBtn.addEventListener('click', ()=>{ dom.logBody.innerHTML=''; });
+
+    // helpers
+    function setMode(m){
+      state.mode = m;
+      dom.modeLassoBtn.classList.toggle('active', m==='lasso');
+      dom.modeBoxBtn.classList.toggle('active', m==='box');
+      log('Mode:', m);
+    }
+    function refreshButtons(){
+      dom.undoBtn.disabled = state.histIndex<=0;
+      dom.redoBtn.disabled = state.histIndex>=state.history.length-1 || state.history.length===0;
+      dom.deleteSelectionBtn.disabled = state.activeIndex===-1;
+      dom.saveBtn.disabled = !state.image;
+      dom.startOverBtn.disabled = !state.image;
+    }
+
+    // window resize
+    window.addEventListener('resize', ()=>{ editor.updateSize(); editor.draw(); preview.layout(); });
+
+    // initial
+    function initEmpty(){
+      editor.updateSize();
+      editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
+      preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
+      renderPresets();
+      updateSettingsUI();
+      refreshButtons();
+      log(`App ready. Version ${APP_VERSION}`);
+      log('Tip: Press S for Lasso, B for Box. Space+Drag to pan. Wheel to zoom.');
+    }
+    initEmpty();
+
+  })();
+  </script>
 </body>
 </html>
