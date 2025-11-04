@@ -7,31 +7,85 @@
 
 <!--
 ================================================================================
-TECHNICAL SPECIFICATION SHEET (v4.0 → v1.6.0 IMPLEMENTATION)
-Latest directives first (top), earlier mandates below.
-
-LATEST ORDERS (This iteration)
-- Fix lasso so it actually selects (freehand path), allow many lasso objects.
-- Add explicit button to add more lassoed objects.
-- Non-selected area must be filtered (grayscale variants); selected stays color.
-- Add "Render Now" button; priority = main preview first, then thumbnails.
-- Show a loading/progress bar that resets on any change and finishes when render fires.
-- Replace sepia/invert with better filters (use useful grayscale combos).
-- Improve initial UI; add settings + logs; keep all working features.
-- Show current code version top-right and bump when updating file.
-- Box: create by click-drag OR single click (default size), move & resize via handles (8).
-
-PREVIOUS ORDERS (kept)
-- Dual panel: left Editor (original, interactive), right Live Preview (non-interactive).
-- Preset gallery of 5 thumbnails; clicking one applies its effect+aggressiveness.
-- Undo/Redo, Start Over (confirm), Upload/Drag&Drop prompt, auto-friendly UX.
-- Save/Load project to JSON (image data+selections), optional localStorage later.
-- Visible developer log.
-
-CORE
-- State/history manager with debounced preview render.
-- Zoom (wheel), Pan (Space+drag). Multiple selections with independent types.
+|                                                                              |
+|                      TECHNICAL SPECIFICATION SHEET (v5.0)                      |
+|                                                                              |
 ================================================================================
+
+//------------------------------------------------------------------------------
+// USER PROMPT (MOST RECENT - The Mandate for this "Happy Birthday" Implementation)
+//------------------------------------------------------------------------------
+// "Here is the code currently that the dawn computer scientist provided you.
+// Look through and solve all the bugs and improve the code much more since its
+// his birthday and we want to make him happy"
+//
+// SPECIFIC ORDERS FOR THIS VERSION (v1.7.0):
+// - FIX: Lasso tool must be a freehand drawing tool that creates a closed path.
+// - FIX: "Add New Lasso" button must correctly de-select the current lasso and
+//   prepare the app to draw a new one.
+// - FIX: Image loading and centering must be perfect. The initial view of the
+//   image should be centered and scaled to fit the editor panel ("focal fit").
+// - FEATURE: Implement a "Render Now" button for immediate preview updates.
+// - FEATURE: Add a visual progress bar that activates on any change and completes
+//   when the debounced render function fires.
+// - FEATURE: Box tool should support two creation methods:
+//   1. Single Click: Creates a default-sized box at the click location.
+//   2. Click & Drag: Draws a box of the desired dimensions.
+// - FEATURE: Box selections must have 8 functional resize handles.
+// - IMPROVE: Replace Sepia/Invert presets with more useful, professional-looking
+//   grayscale filter combinations (e.g., high contrast, soft film).
+// - UI: Add a visible settings panel and a developer log.
+// - UI: Display the current app version in the top-right corner.
+//
+//------------------------------------------------------------------------------
+// PREVIOUS ORDERS (Incorporated into this version)
+//------------------------------------------------------------------------------
+// - Dual-Panel UI: Left side is the interactive Editor (original image), right
+//   side is the non-interactive Live Preview (final result).
+// - Preset Gallery: 5 clickable thumbnails that apply both an effect and an
+//   "aggressiveness" setting to the Live Preview.
+// - Core Tools: Undo/Redo, Start Over (with confirmation), Save/Load project
+//   to a JSON file.
+// - Editor Navigation: Zoom with the mouse wheel, Pan by holding Spacebar + Drag.
+// - State Management: A robust history system for undo/redo, with debounced
+//   rendering to keep the UI responsive.
+
+================================================================================
+|                                                                              |
+|                      FINAL IMPLEMENTATION BLUEPRINT                          |
+|                                                                              |
+================================================================================
+
+1.  **UI Architecture:** A professional dual-panel layout. The left "Editor"
+    is for all user interaction on the original image. The right "Preview"
+    shows the final, filtered result in real-time.
+
+2.  **Rendering Pipeline:** A high-performance, multi-step process using an
+    offscreen mask canvas. This prevents flickering and ensures that the color
+    is "punched through" the filtered background accurately. A progress bar
+    provides visual feedback during the debounced render cycle.
+
+3.  **Selection Tools:**
+    -   **Lasso Tool:** A fully implemented freehand drawing tool. Users can
+        draw any shape, and the path automatically closes when the mouse is
+        released. Multiple distinct lasso shapes are supported.
+    -   **Box Tool:** Supports both click-to-create and drag-to-create. When
+        active, a box displays 8 handles for resizing from any edge or corner.
+
+4.  **Preset Gallery:** Five presets, each with a unique filter and a default
+    aggressiveness setting. Clicking a preset instantly updates the Preview.
+
+5.  **State & History:** Every user action (create, move, resize, delete) is
+    saved to a history stack, allowing for unlimited undo and redo.
+
+6.  **Editor Navigation:** The editor canvas is fully navigable with intuitive
+    pan and zoom controls, allowing for precise edits on large images.
+
+7.  **File Management:** The entire project state, including the image itself
+    (as a Data URL) and all selection data, can be exported to and imported
+    from a single JSON file.
+
+*/
 -->
 
   <style>
@@ -107,18 +161,15 @@ CORE
     .settings{padding:10px;border-bottom:1px solid var(--border)}
     .set-row{display:flex;align-items:center;gap:10px;margin:.35rem 0}
     .set-row input[type=range]{width:180px}
-    .logs{position:relative}
+    .logs{position:relative; overflow:hidden;}
     .log-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);background:#fafbff}
     .log-body{height:100%;padding:10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.8rem;background:#fff}
     .log-line{white-space:pre-wrap;color:#2d3748;margin:.15rem 0}
 
     /* Progress bar */
-    .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden}
+    .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden; opacity:0; transition: opacity 0.3s;}
+    .progress-wrap.visible{opacity:1;}
     .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .12s}
-
-    /* Resize handles for boxes */
-    .handle{position:absolute;width:10px;height:10px;border:2px solid #fff;background:var(--primary);border-radius:2px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
-    /* (Handles drawn on editor canvas overlay instead of DOM for performance; CSS here for reference) */
 
     /* Version badge (fixed) */
     .version-pin{
@@ -168,7 +219,7 @@ CORE
             <canvas id="editor-canvas"></canvas>
           </div>
           <div id="editor-empty" class="placeholder">Drop an image here or click “Upload”</div>
-          <div class="progress-wrap hidden" id="progressEditor"><div class="progress" id="progressBar"></div></div>
+          <div class="progress-wrap" id="progressEditor"><div class="progress" id="progressBar"></div></div>
         </div>
       </section>
 
@@ -228,12 +279,10 @@ CORE
   (function(){
     'use strict';
 
-    // -------------------------- META / VERSION --------------------------
-    const APP_VERSION = "1.6.0";
+    const APP_VERSION = "1.7.0";
     document.getElementById('versionBadge').textContent = APP_VERSION;
     document.getElementById('versionPin').textContent = APP_VERSION;
 
-    // -------------------------- DOM --------------------------
     const dom = {
       uploadBtn: $('#uploadBtn'), saveBtn: $('#saveBtn'), loadBtn: $('#loadBtn'), startOverBtn: $('#startOverBtn'),
       undoBtn: $('#undoBtn'), redoBtn: $('#redoBtn'),
@@ -249,7 +298,6 @@ CORE
       toggleLogsBtn: $('#toggleLogsBtn'), clearLogsBtn: $('#clearLogsBtn'), logBody: $('#logBody')
     };
 
-    // -------------------------- UTIL --------------------------
     function $(id){ return document.getElementById(id); }
     const log = (...args)=> {
       const line = document.createElement('div');
@@ -257,20 +305,18 @@ CORE
       line.textContent = `[${new Date().toLocaleTimeString()}] ` + args.join(' ');
       dom.logBody.appendChild(line);
       dom.logBody.scrollTop = dom.logBody.scrollHeight;
-      //console.log(...args);
     };
     const clamp = (v, a, b)=>Math.max(a, Math.min(b, v));
     const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t = setTimeout(()=>fn(...a), ms); }; };
 
-    // -------------------------- STATE --------------------------
     const state = {
       image: null,
-      selections: [], // {type:'box', x,y,w,h} OR {type:'lasso', points:[{x,y}...], cx, cy}
+      selections: [],
       activeIndex: -1,
       mode: 'lasso',
       transform: {x:0,y:0,scale:1},
       isPanning: false,
-      drag: { active:false, startX:0,startY:0, kind:null, handle:null},
+      drag: { active:false, startX:0,startY:0, kind:null, handle:null, moved:false },
       history: [], histIndex: -1,
       activePreset: 0,
       filters: [
@@ -288,7 +334,6 @@ CORE
     const editor = {
       c: dom.editorCanvas,
       ctx: dom.editorCanvas.getContext('2d'),
-      overlay: null, // drawn within same canvas
       updateSize(){
         const w = dom.editorWrap.clientWidth, h = dom.editorWrap.clientHeight;
         this.c.width = w; this.c.height = h;
@@ -307,19 +352,18 @@ CORE
         ctx.translate(state.transform.x, state.transform.y);
         ctx.scale(state.transform.scale, state.transform.scale);
         ctx.drawImage(state.image, 0, 0);
-        // selections
         state.selections.forEach((sel,i)=>{
           const active = i===state.activeIndex;
           ctx.save();
-          ctx.lineWidth = 2 / state.transform.scale;
-          ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.35)';
-          ctx.fillStyle = active ? 'rgba(24,119,242,.08)' : 'rgba(255,255,255,.15)';
+          ctx.lineWidth = active ? 2.5 / state.transform.scale : 1.5 / state.transform.scale;
+          ctx.strokeStyle = active ? 'var(--sel)' : 'rgba(0,0,0,.4)';
+          ctx.fillStyle = active ? 'var(--sel-ghost)' : 'rgba(255,255,255,.2)';
+          ctx.setLineDash(active ? [] : [6 / state.transform.scale, 4 / state.transform.scale]);
           if(sel.type==='box'){
             ctx.strokeRect(sel.x, sel.y, sel.w, sel.h);
             ctx.fillRect(sel.x, sel.y, sel.w, sel.h);
             if(active) drawBoxHandles(ctx, sel);
           } else {
-            // lasso
             ctx.beginPath();
             sel.points.forEach((p,idx)=> idx?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
             ctx.closePath();
@@ -348,8 +392,6 @@ CORE
       },
       render(){
         if(!state.image) return;
-
-        // 1) build mask at original image size
         this.mask.width = state.image.width;
         this.mask.height = state.image.height;
         const m = this.maskCtx;
@@ -365,8 +407,6 @@ CORE
             m.fill();
           }
         });
-
-        // 2) create filtered background (draw directly to preview canvas)
         const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
         const ctx = this.ctx;
         ctx.clearRect(0,0,this.c.width,this.c.height);
@@ -374,8 +414,6 @@ CORE
         ctx.filter = cssFilter;
         ctx.drawImage(state.image, 0, 0, this.c.width, this.c.height);
         ctx.restore();
-
-        // 3) create color-only selection onto temp canvas: original image masked by selection
         const temp = document.createElement('canvas');
         temp.width = state.image.width;
         temp.height = state.image.height;
@@ -383,14 +421,10 @@ CORE
         tctx.drawImage(state.image, 0,0);
         tctx.globalCompositeOperation = 'destination-in';
         tctx.drawImage(this.mask, 0,0);
-        tctx.globalCompositeOperation = 'source-over';
-
-        // 4) draw that masked color back on the filtered background (scaled to preview size)
         ctx.drawImage(temp, 0,0, this.c.width, this.c.height);
       }
     };
 
-    // -------------------------- PRESETS --------------------------
     function renderPresets(){
       dom.presets.innerHTML = '';
       state.filters.forEach((flt, idx)=>{
@@ -399,18 +433,12 @@ CORE
         item.innerHTML = `<canvas></canvas><label>${flt.name}</label>`;
         const c = item.querySelector('canvas'), cctx = c.getContext('2d');
         if(state.image){
-          // make small thumb
           const aspect = state.image.width/state.image.height;
           c.width = 220; c.height = Math.round(220/aspect);
           cctx.save();
-          cctx.filter = flt.css(state.filtStrength);
+          cctx.filter = flt.css(100); // always full strength for thumb
           cctx.drawImage(state.image, 0,0,c.width,c.height);
           cctx.restore();
-          // overlay a faint sample lasso circle for vibe
-          cctx.globalAlpha = .12;
-          cctx.fillStyle='#000'; cctx.beginPath();
-          cctx.arc(c.width*.65, c.height*.45, Math.min(c.width,c.height)*.15, 0, Math.PI*2);
-          cctx.fill(); cctx.globalAlpha = 1;
         } else {
           c.width=220; c.height=130;
           cctx.fillStyle = '#f3f5f9'; cctx.fillRect(0,0,c.width,c.height);
@@ -418,8 +446,6 @@ CORE
         }
         item.addEventListener('click', ()=>{
           state.activePreset = idx;
-          dom.aggrRange.value = state.aggr; // unchanged, but re-render anyway
-          updateSettingsUI();
           renderPresets();
           schedulePreviewRender(true);
           log('Preset:', flt.name);
@@ -428,10 +454,8 @@ CORE
       });
     }
 
-    // -------------------------- HISTORY --------------------------
     const history = {
       save(){
-        // strip image object but keep dataURL
         const snapshot = {
           selections: JSON.parse(JSON.stringify(state.selections)),
           activeIndex: state.activeIndex,
@@ -459,23 +483,16 @@ CORE
       redo(){ if(state.histIndex<state.history.length-1){ state.histIndex++; history.load(state.histIndex); } }
     };
 
-    // -------------------------- SELECTION HELPERS --------------------------
     function defaultBoxAt(x,y){
       const s = Math.max(40, Math.min(state.image.width, state.image.height)*0.12);
-      return {type:'box', x: clamp(x,0,state.image.width-1), y: clamp(y,0,state.image.height-1), w: s, h: s};
+      return {type:'box', x: clamp(x-s/2,0,state.image.width-s), y: clamp(y-s/2,0,state.image.height-s), w: s, h: s};
     }
     function hitBoxHandle(sel, x, y){
-      // returns one of: 'nw','n','ne','e','se','s','sw','w' or null
       const pad = 8 / state.transform.scale;
       const pts = [
-        ['nw', sel.x, sel.y],
-        ['n',  sel.x+sel.w/2, sel.y],
-        ['ne', sel.x+sel.w, sel.y],
-        ['e',  sel.x+sel.w, sel.y+sel.h/2],
-        ['se', sel.x+sel.w, sel.y+sel.h],
-        ['s',  sel.x+sel.w/2, sel.y+sel.h],
-        ['sw', sel.x, sel.y+sel.h],
-        ['w',  sel.x, sel.y+sel.h/2],
+        ['nw', sel.x, sel.y], ['n',  sel.x+sel.w/2, sel.y], ['ne', sel.x+sel.w, sel.y],
+        ['e',  sel.x+sel.w, sel.y+sel.h/2], ['se', sel.x+sel.w, sel.y+sel.h],
+        ['s',  sel.x+sel.w/2, sel.y+sel.h], ['sw', sel.x, sel.y+sel.h], ['w',  sel.x, sel.y+sel.h/2],
       ];
       for(const [name, px, py] of pts){
         if(Math.abs(x-px)<=pad && Math.abs(y-py)<=pad) return name;
@@ -483,14 +500,15 @@ CORE
       return null;
     }
     function drawBoxHandles(ctx, sel){
-      const r = 6 / state.transform.scale;
+      const r = 5 / state.transform.scale;
       const pts = [
         [ sel.x, sel.y],[ sel.x+sel.w/2, sel.y],[ sel.x+sel.w, sel.y],
         [ sel.x+sel.w, sel.y+sel.h/2],[ sel.x+sel.w, sel.y+sel.h],
         [ sel.x+sel.w/2, sel.y+sel.h],[ sel.x, sel.y+sel.h],[ sel.x, sel.y+sel.h/2]
       ];
-      ctx.fillStyle='#1877f2';
+      ctx.fillStyle='var(--primary)';
       ctx.strokeStyle='#fff';
+      ctx.lineWidth = 1.5 / state.transform.scale;
       pts.forEach(([px,py])=>{
         ctx.beginPath(); ctx.rect(px-r, py-r, r*2, r*2); ctx.fill(); ctx.stroke();
       });
@@ -499,7 +517,6 @@ CORE
       return x>=sel.x && y>=sel.y && x<=sel.x+sel.w && y<=sel.y+sel.h;
     }
     function pointInLasso(sel, x, y){
-      // ray-casting
       let inside = false;
       const pts = sel.points;
       for(let i=0,j=pts.length-1; i<pts.length; j=i++){
@@ -510,22 +527,21 @@ CORE
       return inside;
     }
 
-    // -------------------------- RENDER FLOW & PROGRESS --------------------------
-    let renderTick = 0, progressTimer=null, progressPhase=0;
+    let progressTimer=null;
     function startProgress(){
-      dom.progressWrap.classList.remove('hidden');
-      progressPhase = 0; dom.progressBar.style.width = '0%';
+      dom.progressWrap.classList.add('visible');
+      let p = 0; dom.progressBar.style.width = '0%';
       clearInterval(progressTimer);
       progressTimer = setInterval(()=>{
-        progressPhase = clamp(progressPhase + 7, 0, 85); // creep to 85% max while waiting
-        dom.progressBar.style.width = progressPhase + '%';
+        p = clamp(p + 7, 0, 85);
+        dom.progressBar.style.width = p + '%';
       }, 80);
     }
     function finishProgress(){
       clearInterval(progressTimer);
       progressTimer = null;
       dom.progressBar.style.width = '100%';
-      setTimeout(()=>{ dom.progressWrap.classList.add('hidden'); dom.progressBar.style.width='0%'; }, 250);
+      setTimeout(()=>{ dom.progressWrap.classList.remove('visible'); dom.progressBar.style.width='0%'; }, 350);
     }
 
     const renderPreviewDebounced = debounce(()=>{
@@ -535,7 +551,7 @@ CORE
       preview.render();
       state.rendering = false;
       finishProgress();
-      renderPresets(); // thumbs after main preview
+      renderPresets();
       log('Preview rendered.');
     }, 700);
 
@@ -545,14 +561,11 @@ CORE
       renderPreviewDebounced();
     }
 
-    // -------------------------- EVENT HANDLERS --------------------------
-    // upload / dragdrop
     dom.uploadBtn.addEventListener('click', ()=>dom.fileInput.click());
     dom.fileInput.addEventListener('change', onFileInput);
-    ['dragover','dragenter'].forEach(ev=>dom.editorWrap.addEventListener(ev,(e)=>{e.preventDefault();dom.editorWrap.classList.add('panning');}));
-    ['dragleave','drop'].forEach(ev=>dom.editorWrap.addEventListener(ev,(e)=>{e.preventDefault();dom.editorWrap.classList.remove('panning');}));
+    ['dragover','dragenter'].forEach(ev=>document.body.addEventListener(ev,(e)=>{e.preventDefault();}));
+    ['dragleave','drop'].forEach(ev=>document.body.addEventListener(ev,(e)=>{e.preventDefault();}));
     dom.editorWrap.addEventListener('drop', (e)=>{
-      e.preventDefault();
       const f = e.dataTransfer.files?.[0];
       if(f && f.type.startsWith('image/')) readImageFile(f);
     });
@@ -569,7 +582,7 @@ CORE
           state.image = img;
           state.selections = [];
           state.activeIndex = -1;
-          state.transform = {x:0,y:0,scale:1};
+          focal.fit();
           dom.editorEmpty.classList.add('hidden');
           dom.previewEmpty.classList.add('hidden');
           editor.updateSize(); editor.draw(); preview.init();
@@ -584,17 +597,26 @@ CORE
       r.readAsDataURL(file);
     }
 
-    // editor interactions
+    const focal = {
+      fit(){
+        if(!state.image) return;
+        const iW = state.image.width, iH = state.image.height;
+        const cW = dom.editorWrap.clientWidth, cH = dom.editorWrap.clientHeight;
+        const scale = Math.min(cW/iW, cH/iH) * 0.95; // 95% fit
+        const x = (cW - iW*scale)/2;
+        const y = (cH - iH*scale)/2;
+        state.transform = {x,y,scale};
+      }
+    };
+
     dom.editorWrap.addEventListener('mousedown', (e)=>{
       if(!state.image) return;
-      const isSpace = state.isPanning;
-      if(isSpace){
+      if(state.isPanning){
         state.drag = {active:true,kind:'pan', startX:e.clientX, startY:e.clientY, tx:state.transform.x, ty:state.transform.y};
         dom.editorWrap.classList.add('panning'); return;
       }
       const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
 
-      // selection hit testing
       let hitIndex = -1, hitHandle = null, hitKind='none';
       for(let i=state.selections.length-1;i>=0;i--){
         const sel = state.selections[i];
@@ -608,24 +630,18 @@ CORE
       }
 
       if(hitIndex>=0){
-        // activate and start drag
         state.activeIndex = hitIndex;
         state.drag = {active:true, kind:hitKind, handle:hitHandle, startX:p.x, startY:p.y,
-                      ox:0, oy:0,
                       snapshot: JSON.parse(JSON.stringify(state.selections[hitIndex]))};
         editor.draw();
         return;
       }
 
-      // no hit: begin creating selection
-      state.activeIndex = state.selections.length; // new one
+      state.activeIndex = -1; // Deselect
       if(state.mode==='box'){
-        const sel = defaultBoxAt(p.x,p.y);
-        // if mouse moves -> resize from se corner; if just click -> keep default
-        state.selections.push(sel);
-        state.drag = {active:true,kind:'box-make', handle:'se', startX:p.x, startY:p.y};
+        state.drag = {active:true,kind:'box-make', startX:p.x, startY:p.y, moved:false};
       } else {
-        // lasso freehand path
+        state.activeIndex = state.selections.length;
         const sel = {type:'lasso', points:[p]};
         state.selections.push(sel);
         state.drag = {active:true,kind:'lasso-make', last:p};
@@ -634,97 +650,82 @@ CORE
     });
 
     dom.editorWrap.addEventListener('mousemove', (e)=>{
-      if(!state.image) return;
-      const cx = e.clientX, cy = e.clientY;
-      const p = editor.imgToCanvasSpace(cx,cy);
+      if(!state.image || !state.drag.active) return;
+      state.drag.moved = true;
+      const p = editor.imgToCanvasSpace(e.clientX,e.clientY);
 
-      if(state.drag.active){
-        switch(state.drag.kind){
-          case 'pan':{
-            state.transform.x = state.drag.tx + (cx - state.drag.startX);
-            state.transform.y = state.drag.ty + (cy - state.drag.startY);
+      switch(state.drag.kind){
+        case 'pan':{
+          state.transform.x = state.drag.tx + (e.clientX - state.drag.startX);
+          state.transform.y = state.drag.ty + (e.clientY - state.drag.startY);
+          editor.draw();
+          break;
+        }
+        case 'box-resize':{
+          const sel = state.selections[state.activeIndex];
+          const snap = state.drag.snapshot;
+          const handle = state.drag.handle;
+          const minSize = 10;
+          const right = snap.x + snap.w, bottom = snap.y + snap.h;
+          let nx = snap.x, ny = snap.y, nw = snap.w, nh = snap.h;
+          if(handle.includes('n')){ ny = Math.min(bottom - minSize, p.y); nh = bottom - ny; }
+          if(handle.includes('s')){ nh = Math.max(minSize, p.y - snap.y); }
+          if(handle.includes('w')){ nx = Math.min(right - minSize, p.x); nw = right - nx; }
+          if(handle.includes('e')){ nw = Math.max(minSize, p.x - snap.x); }
+          Object.assign(sel, {x:nx, y:ny, w:nw, h:nh});
+          editor.draw(); schedulePreviewRender();
+          break;
+        }
+        case 'move':{
+          const sel = state.selections[state.activeIndex];
+          const dx = p.x - state.drag.startX, dy = p.y - state.drag.startY;
+          if(sel.type==='box'){
+            sel.x = state.drag.snapshot.x + dx;
+            sel.y = state.drag.snapshot.y + dy;
+          } else {
+            sel.points = state.drag.snapshot.points.map(pt=>({x:pt.x+dx, y:pt.y+dy}));
+          }
+          editor.draw(); schedulePreviewRender();
+          break;
+        }
+        case 'box-make':{
+          const start = state.drag.startX, startY = state.drag.startY;
+          const x = Math.min(start, p.x), y = Math.min(startY, p.y);
+          const w = Math.abs(p.x - start), h = Math.abs(p.y - startY);
+          const sel = {type:'box', x,y,w,h};
+          state.selections[state.selections.length-1] = sel;
+          state.activeIndex = state.selections.length-1;
+          editor.draw(); schedulePreviewRender();
+          break;
+        }
+        case 'lasso-make':{
+          const sel = state.selections[state.activeIndex];
+          const last = state.drag.last;
+          const dist2 = (p.x-last.x)**2 + (p.y-last.y)**2;
+          if(dist2 > (4/state.transform.scale)**2){
+            sel.points.push(p);
+            state.drag.last = p;
             editor.draw();
-            break;
           }
-          case 'box-make':
-          case 'box-resize':{
-            const sel = state.selections[state.activeIndex];
-            let x0 = state.drag.snapshot? state.drag.snapshot.x : sel.x;
-            let y0 = state.drag.snapshot? state.drag.snapshot.y : sel.y;
-            let w0 = state.drag.snapshot? state.drag.snapshot.w : sel.w;
-            let h0 = state.drag.snapshot? state.drag.snapshot.h : sel.h;
-
-            const handle = state.drag.handle || 'se';
-            // compute new rect based on handle
-            const minSize = 5;
-            const right = x0 + w0, bottom = y0 + h0;
-
-            let nx = x0, ny = y0, nw = w0, nh = h0;
-
-            if(state.drag.kind==='box-make'){
-              // drag from initial point to current as SE handle
-              nx = Math.min(state.drag.startX, p.x);
-              ny = Math.min(state.drag.startY, p.y);
-              nw = Math.abs(p.x - state.drag.startX);
-              nh = Math.abs(p.y - state.drag.startY);
-            } else {
-              // resizing based on handle
-              if(handle.includes('n')){ ny = Math.min(bottom - minSize, p.y); nh = bottom - ny; }
-              if(handle.includes('s')){ nh = Math.max(minSize, p.y - y0); }
-              if(handle.includes('w')){ nx = Math.min(right - minSize, p.x); nw = right - nx; }
-              if(handle.includes('e')){ nw = Math.max(minSize, p.x - x0); }
-            }
-            Object.assign(sel, {x:nx, y:ny, w:nw, h:nh});
-            editor.draw(); schedulePreviewRender(true);
-            break;
-          }
-          case 'move':{
-            const sel = state.selections[state.activeIndex];
-            const dx = p.x - state.drag.startX, dy = p.y - state.drag.startY;
-            if(sel.type==='box'){
-              sel.x = state.drag.snapshot.x + dx;
-              sel.y = state.drag.snapshot.y + dy;
-            } else {
-              // move all points
-              sel.points = state.drag.snapshot.points.map(pt=>({x:pt.x+dx, y:pt.y+dy}));
-            }
-            editor.draw(); schedulePreviewRender(true);
-            break;
-          }
-          case 'lasso-make':{
-            const sel = state.selections[state.activeIndex];
-            const last = state.drag.last;
-            const dist2 = (p.x-last.x)**2 + (p.y-last.y)**2;
-            if(dist2 > (2/state.transform.scale)**2){
-              sel.points.push(p);
-              state.drag.last = p;
-              editor.draw(); // live feedback
-            }
-            break;
-          }
+          break;
         }
       }
     });
 
     window.addEventListener('mouseup', ()=>{
-      if(!state.image) return;
-      if(!state.drag.active) return;
-      // finish create / move / resize
-      const wasMake = (state.drag.kind==='box-make' || state.drag.kind==='lasso-make');
+      if(!state.image || !state.drag.active) return;
+      const wasMake = state.drag.kind.endsWith('-make');
+      if(wasMake && !state.drag.moved && state.mode==='box'){
+        // single click box creation
+        state.selections.push(defaultBoxAt(state.drag.startX, state.drag.startY));
+        state.activeIndex = state.selections.length-1;
+      }
       state.drag.active=false;
       dom.editorWrap.classList.remove('panning');
-
-      // Cleanup too-small boxes or too-short lasso
       const sel = state.selections[state.activeIndex];
       if(sel){
-        if(sel.type==='box' && (sel.w<5 || sel.h<5)){
-          state.selections.splice(state.activeIndex,1);
-          state.activeIndex=-1;
-        }
-        if(sel.type==='lasso' && sel.points.length<3){
-          state.selections.splice(state.activeIndex,1);
-          state.activeIndex=-1;
-        }
+        if(sel.type==='box' && (sel.w<5 || sel.h<5)){ state.selections.pop(); state.activeIndex=-1; }
+        if(sel.type==='lasso' && sel.points.length<3){ state.selections.pop(); state.activeIndex=-1; }
       }
       editor.draw();
       schedulePreviewRender(true);
@@ -732,7 +733,6 @@ CORE
       if(wasMake) log('Selection added:', sel? sel.type:'(discarded)');
     });
 
-    // zoom
     dom.editorWrap.addEventListener('wheel', (e)=>{
       if(!state.image) return;
       e.preventDefault();
@@ -747,7 +747,6 @@ CORE
       editor.draw();
     }, {passive:false});
 
-    // keys
     window.addEventListener('keydown', (e)=>{
       if(e.code==='Space' && !state.isPanning){ state.isPanning=true; dom.editorWrap.classList.add('panning'); }
       if((e.key==='Delete'||e.key==='Backspace') && state.activeIndex!==-1){
@@ -764,12 +763,12 @@ CORE
     });
     window.addEventListener('keyup', (e)=>{ if(e.code==='Space'){ state.isPanning=false; dom.editorWrap.classList.remove('panning'); }});
 
-    // buttons
     dom.modeLassoBtn.addEventListener('click', ()=>setMode('lasso'));
     dom.newLassoBtn.addEventListener('click', ()=>{
       setMode('lasso');
       state.activeIndex = -1;
-      log('Ready to draw a new lasso. Click-drag freehand to close the shape.');
+      editor.draw();
+      log('Ready to draw a new lasso. Click-drag on the editor to draw a freehand shape.');
     });
     dom.modeBoxBtn.addEventListener('click', ()=>setMode('box'));
     dom.deleteSelectionBtn.addEventListener('click', ()=>{
@@ -799,20 +798,16 @@ CORE
 
     dom.saveBtn.addEventListener('click', ()=>{
       if(!state.image) return;
-      const dataURL = getCurrentImageDataURL();
       const payload = {
-        app: 'Color Splash Pro X',
-        version: APP_VERSION,
-        imageDataURL: dataURL,
-        selections: state.selections,
-        activePreset: state.activePreset,
-        aggr: state.aggr,
-        filtStrength: state.filtStrength
+        app: 'Color Splash Pro X', version: APP_VERSION,
+        imageDataURL: state.image.src,
+        selections: state.selections, activePreset: state.activePreset,
+        aggr: state.aggr, filtStrength: state.filtStrength
       };
       const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `color-splash-${Date.now()}.json`;
+      a.download = `colorsplash-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
       log('Saved project JSON.');
@@ -832,14 +827,6 @@ CORE
       r.readAsText(f);
     });
 
-    function getCurrentImageDataURL(){ // keep original image data as stored when uploaded
-      // If we want to persist exactly original, we need to keep the original dataURL on load
-      // Simpler: re-create from current <img> by drawing on a temp canvas
-      const c = document.createElement('canvas'); c.width = state.image.width; c.height = state.image.height;
-      const ctx = c.getContext('2d'); ctx.drawImage(state.image,0,0);
-      return c.toDataURL('image/png');
-    }
-
     function loadFromObject(obj){
       const img = new Image();
       img.onload = ()=>{
@@ -850,14 +837,13 @@ CORE
         state.aggr = obj.aggr ?? 35;
         state.filtStrength = obj.filtStrength ?? 100;
         dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
-        editor.updateSize(); editor.draw(); preview.init(); renderPresets(); updateSettingsUI();
+        editor.updateSize(); focal.fit(); editor.draw(); preview.init(); renderPresets(); updateSettingsUI();
         state.history=[]; state.histIndex=-1; history.save(); refreshButtons();
         schedulePreviewRender(true);
       };
       img.src = obj.imageDataURL;
     }
 
-    // settings
     dom.aggrRange.addEventListener('input', ()=>{
       state.aggr = parseInt(dom.aggrRange.value,10);
       updateSettingsUI();
@@ -873,7 +859,6 @@ CORE
       dom.fltVal.textContent = state.filtStrength+'%';
     }
 
-    // logs
     let logsVisible = true;
     dom.toggleLogsBtn.addEventListener('click', ()=>{
       logsVisible = !logsVisible;
@@ -881,7 +866,6 @@ CORE
     });
     dom.clearLogsBtn.addEventListener('click', ()=>{ dom.logBody.innerHTML=''; });
 
-    // helpers
     function setMode(m){
       state.mode = m;
       dom.modeLassoBtn.classList.toggle('active', m==='lasso');
@@ -896,10 +880,8 @@ CORE
       dom.startOverBtn.disabled = !state.image;
     }
 
-    // window resize
     window.addEventListener('resize', ()=>{ editor.updateSize(); editor.draw(); preview.layout(); });
 
-    // initial
     function initEmpty(){
       editor.updateSize();
       editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
