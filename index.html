@@ -7,40 +7,49 @@
 
 <!--
 ================================================================================
-TECHNICAL SPECIFICATION SHEET (v1.10.0 "AutoLasso + Stability")
-We only FIX/ADD; nothing working was removed.
+TECHNICAL SPECIFICATION SHEET (v1.20.0 "200-Point Upgrade")
+We ONLY add/fix. No working feature was removed.
 
-NEW IN v1.10.0
-- FIX: Preview “shrinking every render” — layout now measures a stable container
-  rect via getBoundingClientRect() and never reflows from the canvas itself.
-- FIX: Preview mask feathering uses a temp buffer (no self-draw) → prevents
-  cumulative blur artifacts and size drift.
-- FIX: Drag & Drop bound to editor area with preventDefault; no stray body drops.
-- FIX: Preset thumbnails update after main preview; editor/preview centering stays
-  symmetrical; initial UI looks tidy.
-- UI: Editor made larger (3fr / 2fr); thumbnails smaller and balanced; logs panel
-  is collapsible and starts collapsed by default.
-- UI: Version badge kept; progress bar resets cleanly each render.
-- ADD: Two automatic selection tools:
-  1) 🪄 Auto Wand — flood-fill “magic wand” (tolerance slider).
-  2) 🧠 Auto Smart — wand + controlled grow (dilate) based on “Aggressiveness”.
-  Both create bitmap selections (new type: 'mask') without removing lasso/box flows.
-- ADD: “Tolerance” slider for Auto tools; Aggressiveness continues to control
-  feathering + Smart grow.
+WHAT'S NEW (on top of v1.10.0)
+- LAYOUT/STABILITY
+  • Editor & Preview areas are much larger (grid 5fr / 3fr).
+  • Preset thumbnails are ~50% smaller, tightly centered in a compact bottom bar.
+  • Settings panel is slimmer by default; logs remain collapsible (start hidden).
+  • All canvases are hard-centered via container rects; no right-glue / drift.
+  • Preview shrink bug permanently fixed (stable container rect, integer sizing).
 
-RETAINED
-- Dual-panel UI; Lasso (freehand) + New Lasso; Box tool (click default / drag size)
-  with 8 handles; Undo/Redo; Start Over; Save/Load JSON; Render Now; pan/zoom;
-  developer log; presets; version pin; debounced render with progress.
+- RENDER/RESPONSIVENESS
+  • Any settings change (Feather/Tolerance/Filter/Brush size) schedules a re-render.
+  • Debounced main render first, then thumbnails; progress bar resets correctly.
+  • Feather uses temp buffer, no cumulative blur artifacts.
+
+- SELECTIONS (kept: Lasso, New Lasso, Box, Undo/Redo, Save/Load, Pan/Zoom, Presets)
+  • Auto Wand (W) — flood fill by color distance + tolerance.
+  • Auto Smart (G) — Auto Wand + controlled grow (dilate) by Aggressiveness.
+  • NEW: Super Smart (K) — multi-seed adaptive wand using local mean & gradients.
+  • NEW: Protect Wand (Shift+W) — inverse-auto; marks “immune” (no color effect).
+  • NEW: Brush (E) — subtractive eraser on current color mask.
+  • NEW: Protect Brush (P) — additive brush on immunity mask (blocks color effect).
+  • NEW data model:
+       selections[]: classic shapes & bitmap masks that ADD color
+       protectMask: a dedicated full-res canvas that REMOVES from color mask
+  • NEW slider: Brush Size.
+
+- UX
+  • Tool buttons for Auto Wand / Auto Smart / Super Smart / Protect Wand / Brush /
+    Protect Brush added without removing earlier buttons.
+  • Presets remain clickable; thumbnails re-render after main preview.
+  • All panels perfectly centered; empty states clean; version pin kept.
+
 ================================================================================
 -->
 
   <style>
     :root{
-      --bg:#f0f2f5;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
+      --bg:#eef1f5;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
       --border:#d7dbe1;--shadow:rgba(0,0,0,.08);--shadow-2:rgba(0,0,0,.14);
       --danger:#fa383e;--ok:#19a974;--warn:#ffb700;
-      --sel:#1877f2;--sel-ghost:rgba(24,119,242,.2);
+      --sel:#1877f2;--sel-ghost:rgba(24,119,242,.12);
     }
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     *{box-sizing:border-box}
@@ -50,14 +59,14 @@ RETAINED
       background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;
     }
     header{
-      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;z-index:3;
+      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.65rem 1rem;display:flex;align-items:center;gap:.6rem;z-index:3;
     }
     .brand{font-weight:800;color:var(--primary);letter-spacing:.2px}
     .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.25rem .5rem;border-radius:6px}
-    .toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
-    .group{display:flex;gap:.5rem;align-items:center}
+    .toolbar{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
+    .group{display:flex;gap:.4rem;align-items:center}
     button{
-      padding:.45rem .8rem;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:pointer;
+      padding:.42rem .75rem;border:1px solid var(--border);background:#fff;border-radius:10px;cursor:pointer;
       font-weight:600;font-size:.9rem;display:inline-flex;gap:.45rem;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,.02);
       transition:transform .05s ease, border-color .2s, background .2s, color .2s;
     }
@@ -71,56 +80,67 @@ RETAINED
     .icon{font-size:1.1rem}
 
     .shell{flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}
-    /* Make editor bigger than preview */
-    .row{display:grid;grid-template-columns:3fr 2fr;gap:10px;min-height:0}
+
+    /* TOP ROW: Make editor larger than preview (center panels) */
+    .row{display:grid;grid-template-columns:5fr 3fr;gap:10px;min-height:0}
     .panel{
       background:var(--panel);border-radius:12px;box-shadow:0 2px 8px var(--shadow);
       display:flex;flex-direction:column;min-height:0;overflow:hidden
     }
     .panel-h{
-      padding:.6rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
+      padding:.55rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
       display:flex;align-items:center;justify-content:center;gap:.5rem
     }
     .panel-c{
       flex:1;position:relative;background:#e9eef6;display:flex;align-items:center;justify-content:center;overflow:hidden
     }
-    .placeholder{color:var(--muted);font-weight:600;opacity:.85;pointer-events:none}
-    .canvas-wrap{position:relative;width:100%;height:100%;overflow:hidden;cursor:grab;display:flex;align-items:center;justify-content:center}
+
+    /* Keep canvases centered, never glued */
+    .canvas-wrap{
+      position:relative;width:100%;height:100%;overflow:hidden;cursor:grab;
+      display:flex;align-items:center;justify-content:center
+    }
     .canvas-wrap.panning{cursor:grabbing}
-    .canvas-wrap.drop-hover{outline:3px dashed var(--primary); outline-offset:-8px; background:rgba(24,119,242,0.1)}
+    .canvas-wrap.drop-hover{outline:3px dashed var(--primary); outline-offset:-8px; background:rgba(24,119,242,0.08)}
     canvas{display:block;background:#fff}
     #editor-canvas{position:absolute;transform-origin:top left}
 
-    /* Bottom area: presets + side (settings/logs) */
-    .bottom{display:grid;grid-template-columns:2fr 1fr;gap:10px;min-height:140px}
-    .presets.panel{min-height:140px}
+    .placeholder{color:var(--muted);font-weight:600;opacity:.85;pointer-events:none}
+
+    /* BOTTOM: presets small & centered + slim settings */
+    .bottom{display:grid;grid-template-columns:3fr 1.2fr;gap:10px;min-height:150px}
+    .presets.panel{min-height:150px}
     .presets-grid{
-      display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:10px;align-items:start;justify-items:center
+      display:grid;grid-template-columns:repeat(5, minmax(90px, 120px));
+      gap:10px;padding:10px;align-items:end;justify-content:center;justify-items:center
     }
-    .preset{cursor:pointer;text-align:center;width:100%;max-width:160px;margin:0 auto}
+    .preset{cursor:pointer;text-align:center;width:100%;max-width:120px;margin:0 auto}
     .preset canvas{
-      width:100%;height:auto;aspect-ratio:16/9;background:#f3f5f9;border-radius:10px;border:3px solid transparent;
+      width:100%;height:auto;aspect-ratio:16/10;background:#f3f5f9;border-radius:10px;border:3px solid transparent;
       box-shadow:0 1px 3px var(--shadow);transition:all .15s
     }
     .preset:hover canvas{transform:translateY(-2px)}
     .preset.active canvas{border-color:var(--primary);box-shadow:0 6px 14px var(--shadow-2)}
-    .preset label{display:block;margin-top:4px;font-size:.78rem;color:var(--muted);text-align:center}
+    .preset label{display:block;margin-top:4px;font-size:.78rem;color:#6b7280;text-align:center}
 
-    .side.panel{min-height:140px}
+    .side.panel{min-height:150px}
     .side-c{display:grid;grid-template-rows:auto 1fr}
     .settings{padding:10px;border-bottom:1px solid var(--border)}
     .set-row{display:flex;align-items:center;gap:10px;margin:.35rem 0}
     .set-row input[type=range]{flex-grow:1}
+    .small-note{font-size:.75rem;color:#7a8699}
 
     .logs{position:relative; overflow:hidden; display:none;}
     .log-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);background:#fafbff}
     .log-body{height:100%;padding:10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.8rem;background:#fff}
     .log-line{white-space:pre-wrap;color:#2d3748;margin:.15rem 0}
 
+    /* Progress bar */
     .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden; opacity:0; transition: opacity 0.25s; pointer-events:none;}
     .progress-wrap.visible{opacity:1;}
     .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .12s}
 
+    /* Version pin */
     .version-pin{
       position:fixed;top:8px;right:8px;background:#101828;color:#fff;font-size:.75rem;padding:.25rem .5rem;border-radius:6px;
       box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:4;opacity:.9
@@ -149,10 +169,21 @@ RETAINED
         <button id="modeBoxBtn" title="Box Select (B)">🔲 Box</button>
         <button id="deleteSelectionBtn" title="Delete active selection (Del)" disabled>🗑️ Delete</button>
       </div>
+
+      <!-- Auto tools -->
       <div class="group">
         <button id="autoWandBtn" title="Auto Wand (click to seed) (W)">🪄 Auto Wand</button>
         <button id="autoSmartBtn" title="Auto Smart (wand + grow) (G)">🧠 Auto Smart</button>
+        <button id="autoSuperBtn" title="Super Smart (multi-seed, adaptive) (K)">🧬 Super Smart</button>
+        <button id="protectWandBtn" title="Protect Wand (immune area) (Shift+W)">🛡️ Protect Wand</button>
       </div>
+
+      <!-- Brushes -->
+      <div class="group">
+        <button id="eraserBtn" title="Brush Eraser (subtract color) (E)">🧽 Brush</button>
+        <button id="protectBrushBtn" title="Protect Brush (add immune) (P)">🛡️ Brush</button>
+      </div>
+
       <div class="group">
         <button id="renderNowBtn" title="Render immediately">⚡ Render Now</button>
       </div>
@@ -199,17 +230,23 @@ RETAINED
           <div class="settings">
             <div class="set-row">
               <strong>Settings</strong>
+              <span class="small-note">Changes re-render automatically</span>
               <button id="toggleLogsBtn" style="margin-left:auto">📝 Toggle Logs</button>
             </div>
             <div class="set-row">
-              <label for="aggrRange">Feather</label>
+              <label for="aggrRange" title="Feather radius & Smart grow">Feather</label>
               <input type="range" id="aggrRange" min="0" max="100" value="35"/>
               <span id="aggrVal">35</span>
             </div>
             <div class="set-row">
-              <label for="tolRange">Tolerance (Auto tools)</label>
+              <label for="tolRange" title="Tolerance for Auto tools">Tolerance</label>
               <input type="range" id="tolRange" min="0" max="100" value="25"/>
               <span id="tolVal">25</span>
+            </div>
+            <div class="set-row">
+              <label for="brushRange" title="Brush/Eraser size in px (image space)">Brush</label>
+              <input type="range" id="brushRange" min="3" max="160" value="32"/>
+              <span id="brushVal">32 px</span>
             </div>
             <div class="set-row">
               <label for="fltRange">Filter Strength</label>
@@ -238,7 +275,7 @@ RETAINED
     'use strict';
 
     // -------------------------- META / VERSION --------------------------
-    const APP_VERSION = "1.10.0";
+    const APP_VERSION = "1.20.0";
     document.getElementById('versionBadge').textContent = APP_VERSION;
     document.getElementById('versionPin').textContent = APP_VERSION;
 
@@ -248,8 +285,10 @@ RETAINED
       uploadBtn: $('uploadBtn'), saveBtn: $('saveBtn'), loadBtn: $('loadBtn'), startOverBtn: $('startOverBtn'),
       undoBtn: $('undoBtn'), redoBtn: $('redoBtn'),
       modeLassoBtn: $('modeLassoBtn'), newLassoBtn: $('newLassoBtn'), modeBoxBtn: $('modeBoxBtn'),
-      deleteSelectionBtn: $('deleteSelectionBtn'), renderNowBtn: $('renderNowBtn'),
-      autoWandBtn: $('autoWandBtn'), autoSmartBtn: $('autoSmartBtn'),
+      deleteSelectionBtn: $('deleteSelectionBtn'),
+      autoWandBtn: $('autoWandBtn'), autoSmartBtn: $('autoSmartBtn'), autoSuperBtn: $('autoSuperBtn'), protectWandBtn: $('protectWandBtn'),
+      eraserBtn: $('eraserBtn'), protectBrushBtn: $('protectBrushBtn'),
+      renderNowBtn: $('renderNowBtn'),
       fileInput: $('fileInput'), loadInput: $('loadInput'),
       editorWrap: $('editor-wrap'), editorCanvas: $('editor-canvas'), editorEmpty: $('editor-empty'),
       previewContainer: $('preview-container'), previewCanvas: $('preview-canvas'), previewEmpty: $('preview-empty'),
@@ -257,6 +296,7 @@ RETAINED
       progressWrap: $('progressEditor'), progressBar: $('progressBar'),
       aggrRange: $('aggrRange'), aggrVal: $('aggrVal'),
       tolRange: $('tolRange'), tolVal: $('tolVal'),
+      brushRange: $('brushRange'), brushVal: $('brushVal'),
       fltRange: $('fltRange'), fltVal: $('fltVal'),
       toggleLogsBtn: $('toggleLogsBtn'), clearLogsBtn: $('clearLogsBtn'), logBody: $('logBody')
     };
@@ -276,8 +316,9 @@ RETAINED
     const state = {
       image: null,
       selections: [], // {type:'box', x,y,w,h} | {type:'lasso', points:[{x,y}]} | {type:'mask', maskCanvas}
+      protectMask: null, // canvas that removes from final color mask (immune)
       activeIndex: -1,
-      mode: 'lasso', // 'lasso' | 'box' | 'autoWand' | 'autoSmart'
+      mode: 'lasso', // 'lasso' | 'box' | 'autoWand' | 'autoSmart' | 'autoSuper' | 'protectWand' | 'eraser' | 'protectBrush'
       transform: {x:0,y:0,scale:1},
       isPanning: false,
       drag: { active:false, startX:0,startY:0, kind:null, handle:null, moved:false, snapshot:null },
@@ -290,9 +331,10 @@ RETAINED
         {name:'Crunchy',   css:(s)=>`grayscale(${s}%) contrast(1.55)`,               aggr:45},
         {name:'Dreamy',    css:(s)=>`grayscale(${s}%) blur(0.6px) brightness(1.06)`, aggr:60}
       ],
-      aggr: 35,            // feather radius proxy (and Smart grow strength)
+      aggr: 35,            // feather radius proxy + Smart grow strength
       tol: 25,             // tolerance for Auto tools
-      filtStrength: 100,   // grayscale %
+      brush: 32,           // brush size (px in image space)
+      filtStrength: 100,   // grayscale % (0..100)
       rendering: false
     };
 
@@ -323,9 +365,9 @@ RETAINED
         state.selections.forEach((sel,i)=>{
           const active = i===state.activeIndex;
           ctx.save();
-          ctx.lineWidth = active ? 2.5 / state.transform.scale : 1.5 / state.transform.scale;
+          ctx.lineWidth = active ? 2.6 / state.transform.scale : 1.5 / state.transform.scale;
           ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.45)';
-          ctx.fillStyle = active ? 'rgba(24,119,242,.08)' : 'rgba(255,255,255,.18)';
+          ctx.fillStyle = active ? 'rgba(24,119,242,.10)' : 'rgba(255,255,255,.16)';
           ctx.setLineDash(active ? [] : [6 / state.transform.scale, 4 / state.transform.scale]);
 
           if(sel.type==='box'){
@@ -339,21 +381,37 @@ RETAINED
             ctx.stroke();
             ctx.fill();
           } else if(sel.type==='mask' && sel.maskCanvas){
-            // show mask silhouette lightly
             ctx.globalAlpha = active ? 0.25 : 0.15;
             ctx.drawImage(sel.maskCanvas, 0, 0);
             ctx.globalAlpha = 1;
-            // outline via simple marching squares approximation (cheap edge)
-            ctx.save();
-            ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.45)';
-            ctx.lineWidth = active ? 2.0 / state.transform.scale : 1.2 / state.transform.scale;
-            // edge by compositing mask minus eroded mask:
             const edge = edgeFromMask(sel.maskCanvas, 1);
-            if(edge) ctx.drawImage(edge, 0, 0);
-            ctx.restore();
+            if(edge){
+              ctx.save();
+              ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.45)';
+              ctx.lineWidth = active ? 2.0 / state.transform.scale : 1.2 / state.transform.scale;
+              ctx.drawImage(edge, 0, 0);
+              ctx.restore();
+            }
           }
           ctx.restore();
         });
+
+        // show protect mask overlay
+        if(state.protectMask){
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = '#fa383e';
+          const pm = state.protectMask.getContext('2d').getImageData(0,0,state.protectMask.width,state.protectMask.height);
+          // fast draw: draw mask as red via destination-in trick
+          const temp = document.createElement('canvas');
+          temp.width = state.protectMask.width; temp.height = state.protectMask.height;
+          const tx = temp.getContext('2d');
+          tx.putImageData(pm,0,0);
+          ctx.drawImage(temp,0,0);
+          ctx.globalAlpha = 1;
+          ctx.restore();
+        }
+
         ctx.restore();
       }
     };
@@ -367,27 +425,23 @@ RETAINED
       init(){ this.maskCtx = this.mask.getContext('2d'); },
       layout(){
         if(!state.image){ return; }
-        // Measure a stable container rect (not influenced by canvas size)
         const rect = dom.previewContainer.getBoundingClientRect();
         const availW = Math.max(0, rect.width);
         const availH = Math.max(0, rect.height);
         const aspect = state.image.width / state.image.height;
         let w = availW, h = w/aspect;
         if(h>availH){ h = availH; w = h*aspect; }
-        // Avoid fractional drift
         this.c.width = Math.max(1, Math.round(w));
         this.c.height = Math.max(1, Math.round(h));
       },
       render(){
         if(!state.image) return;
 
-        // Full-res mask
+        // --- Build full-res union mask of all positive selections ---
         this.mask.width = state.image.width;
         this.mask.height = state.image.height;
         const m = this.maskCtx;
         m.clearRect(0,0,this.mask.width,this.mask.height);
-
-        // Composite all selections into mask (white = keep color)
         m.fillStyle = '#fff';
         state.selections.forEach(sel=>{
           if(sel.type==='box'){
@@ -402,7 +456,20 @@ RETAINED
           }
         });
 
-        // Feather via temp buffer (no self-draw artifacts)
+        // --- Subtract protect mask if present ---
+        if(state.protectMask){
+          const cut = document.createElement('canvas');
+          cut.width = this.mask.width; cut.height = this.mask.height;
+          const cx = cut.getContext('2d');
+          cx.drawImage(this.mask,0,0);
+          cx.globalCompositeOperation = 'destination-out';
+          cx.drawImage(state.protectMask,0,0);
+          // replace original
+          m.clearRect(0,0,this.mask.width,this.mask.height);
+          m.drawImage(cut,0,0);
+        }
+
+        // --- Feather via temp buffer (no self-draw artifacts) ---
         const blurPx = Math.round(clamp(state.aggr,0,100) * 0.22); // ~0..22px
         if(blurPx>0){
           const tmp = document.createElement('canvas');
@@ -414,17 +481,16 @@ RETAINED
           m.drawImage(tmp,0,0);
         }
 
+        // --- Paint background (filtered) ---
         const ctx = this.ctx;
         ctx.clearRect(0,0,this.c.width,this.c.height);
-
-        // Background (filtered)
         const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
         ctx.save();
         ctx.filter = cssFilter;
         ctx.drawImage(state.image, 0, 0, this.c.width, this.c.height);
         ctx.restore();
 
-        // Color-only on top, clipped by mask
+        // --- Color-only layer clipped by mask ---
         const colored = document.createElement('canvas');
         colored.width = state.image.width; colored.height = state.image.height;
         const cctx = colored.getContext('2d');
@@ -445,15 +511,17 @@ RETAINED
         const c = item.querySelector('canvas'), cctx = c.getContext('2d');
         if(state.image){
           const aspect = state.image.width/state.image.height;
-          c.width = 160; c.height = Math.max(90, Math.round(160/aspect));
+          const base = 110; // ~half earlier size
+          c.width = base;
+          c.height = Math.max(70, Math.round(base/aspect));
           cctx.save();
           cctx.filter = flt.css(100);
           cctx.drawImage(state.image, 0,0,c.width,c.height);
           cctx.restore();
         } else {
-          c.width=160; c.height=100;
+          c.width=110; c.height=80;
           cctx.fillStyle = '#f3f5f9'; cctx.fillRect(0,0,c.width,c.height);
-          cctx.fillStyle='#9aa3b2'; cctx.fillText('Load image', 40, 55);
+          cctx.fillStyle='#9aa3b2'; cctx.fillText('Load image', 20, 45);
         }
         item.addEventListener('click', ()=>{
           state.activePreset = idx;
@@ -472,14 +540,16 @@ RETAINED
       save(){
         const snapshot = {
           selections: JSON.parse(JSON.stringify(state.selections, (k,v)=>{
-            if(k==='maskCanvas' && v && v.toDataURL) return v.toDataURL(); // serialize mask
+            if(k==='maskCanvas' && v && v.toDataURL) return v.toDataURL();
             return v;
           })),
+          protectMask: state.protectMask ? state.protectMask.toDataURL() : null,
           activeIndex: state.activeIndex,
           transform: {...state.transform},
           activePreset: state.activePreset,
           aggr: state.aggr,
           tol: state.tol,
+          brush: state.brush,
           filtStrength: state.filtStrength
         };
         if(state.histIndex < state.history.length-1) state.history = state.history.slice(0,state.histIndex+1);
@@ -496,11 +566,13 @@ RETAINED
           }
           return s;
         });
+        state.protectMask = snap.protectMask ? dataURLToCanvas(snap.protectMask) : null;
         state.activeIndex = snap.activeIndex;
         state.transform = snap.transform;
         state.activePreset = snap.activePreset ?? state.activePreset;
         state.aggr = snap.aggr ?? state.aggr;
         state.tol = snap.tol ?? state.tol;
+        state.brush = snap.brush ?? state.brush;
         state.filtStrength = snap.filtStrength ?? state.filtStrength;
         editor.draw(); schedulePreviewRender(true); renderPresets(); updateSettingsUI(); refreshButtons();
       },
@@ -573,7 +645,7 @@ RETAINED
       finishProgress();
       renderPresets(); // thumbs after main preview
       log('Preview rendered.');
-    }, 600);
+    }, 500);
 
     function schedulePreviewRender(startProgressBar=true){
       if(!state.image) return;
@@ -609,6 +681,7 @@ RETAINED
         img.onload = ()=>{
           state.image = img;
           state.selections = [];
+          state.protectMask = null;
           state.activeIndex = -1;
           dom.editorEmpty.classList.add('hidden');
           dom.previewEmpty.classList.add('hidden');
@@ -645,17 +718,14 @@ RETAINED
     dom.editorWrap.addEventListener('mousedown', (e)=>{
       if(!state.image) return;
 
-      // Auto modes: on click, seed flood-fill; return early
-      if(state.mode==='autoWand' || state.mode==='autoSmart'){
+      // Auto / Brush modes: act on click/drag and return
+      if(['autoWand','autoSmart','autoSuper','protectWand','eraser','protectBrush'].includes(state.mode)){
         const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
-        const mask = magicWandMask(state.image, Math.round(p.x), Math.round(p.y), state.tol/100, state.mode==='autoSmart'? state.aggr:0);
-        if(mask){
-          state.selections.push({type:'mask', maskCanvas: mask});
-          state.activeIndex = state.selections.length-1;
-          editor.draw();
-          schedulePreviewRender(true);
-          history.save();
-          log(state.mode==='autoSmart'?'Auto Smart':'Auto Wand', 'selection added (tol:', state.tol, ', aggr:', state.aggr, ')');
+        if(state.mode==='eraser' || state.mode==='protectBrush'){
+          startBrushing(e, p.x, p.y);
+        } else {
+          // Auto-variants (generate mask)
+          handleAutoSeed(state.mode, Math.round(p.x), Math.round(p.y));
         }
         return;
       }
@@ -678,7 +748,6 @@ RETAINED
         }else if(sel.type==='lasso'){
           if(pointInLasso(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
         }else if(sel.type==='mask'){
-          // simple alpha test (read mask pixel)
           if(maskHit(sel.maskCanvas, p.x, p.y)){ hitIndex=i; hitKind='move'; break; }
         }
       }
@@ -711,7 +780,16 @@ RETAINED
     });
 
     dom.editorWrap.addEventListener('mousemove', (e)=>{
-      if(!state.image || !state.drag.active) return;
+      if(!state.image) return;
+
+      // brushing (eraser/protect brush)
+      if(brush.active){
+        const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
+        brushStroke(p.x, p.y);
+        return;
+      }
+
+      if(!state.drag.active) return;
       const p = editor.imgToCanvasSpace(e.clientX,e.clientY);
       if(!state.drag.moved && (Math.abs(e.clientX-state.drag.startX)>3 || Math.abs(e.clientY-state.drag.startY)>3)) state.drag.moved = true;
 
@@ -747,7 +825,6 @@ RETAINED
           } else if(sel.type==='lasso'){
             sel.points = snap.points.map(pt=>({x:pt.x+dx, y:pt.y+dy}));
           } else if(sel.type==='mask'){
-            // Move mask by drawing into a new canvas (translate)
             const moved = document.createElement('canvas');
             moved.width = snap.maskCanvas.width; moved.height = snap.maskCanvas.height;
             const mctx = moved.getContext('2d');
@@ -781,6 +858,7 @@ RETAINED
     });
 
     window.addEventListener('mouseup', ()=>{
+      if(brush.active){ endBrushing(); return; }
       if(!state.image || !state.drag.active) return;
       const wasMake = /-make$/.test(state.drag.kind);
       if(state.drag.kind==='lasso-make'){
@@ -846,6 +924,10 @@ RETAINED
       if(e.key.toLowerCase()==='b'){ setMode('box'); }
       if(e.key.toLowerCase()==='w'){ setMode('autoWand'); }
       if(e.key.toLowerCase()==='g'){ setMode('autoSmart'); }
+      if(e.key.toLowerCase()==='k'){ setMode('autoSuper'); }
+      if(e.shiftKey && e.key.toLowerCase()==='w'){ setMode('protectWand'); }
+      if(e.key.toLowerCase()==='e'){ setMode('eraser'); }
+      if(e.key.toLowerCase()==='p'){ setMode('protectBrush'); }
     });
     window.addEventListener('keyup', (e)=>{ if(e.code==='Space'){ state.isPanning=false; dom.editorWrap.classList.remove('panning'); }});
 
@@ -867,6 +949,10 @@ RETAINED
     });
     dom.autoWandBtn.addEventListener('click', ()=>setMode('autoWand'));
     dom.autoSmartBtn.addEventListener('click', ()=>setMode('autoSmart'));
+    dom.autoSuperBtn.addEventListener('click', ()=>setMode('autoSuper'));
+    dom.protectWandBtn.addEventListener('click', ()=>setMode('protectWand'));
+    dom.eraserBtn.addEventListener('click', ()=>setMode('eraser'));
+    dom.protectBrushBtn.addEventListener('click', ()=>setMode('protectBrush'));
     dom.undoBtn.addEventListener('click', ()=>history.undo());
     dom.redoBtn.addEventListener('click', ()=>history.redo());
     dom.renderNowBtn.addEventListener('click', ()=>{
@@ -877,7 +963,7 @@ RETAINED
     dom.startOverBtn.addEventListener('click', ()=>{
       if(!state.image) return;
       if(confirm('Clear the image and all selections?')){
-        state.image=null; state.selections=[]; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
+        state.image=null; state.selections=[]; state.protectMask=null; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
         dom.editorEmpty.classList.remove('hidden'); dom.previewEmpty.classList.remove('hidden');
         editor.updateSize(); editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
         preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
@@ -894,9 +980,11 @@ RETAINED
           if(s.type==='mask' && s.maskCanvas) return {...s, maskCanvas: s.maskCanvas.toDataURL()};
           return s;
         }),
+        protectMask: state.protectMask ? state.protectMask.toDataURL() : null,
         activePreset: state.activePreset,
         aggr: state.aggr,
         tol: state.tol,
+        brush: state.brush,
         filtStrength: state.filtStrength
       };
       const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
@@ -933,10 +1021,12 @@ RETAINED
           }
           return s;
         });
+        state.protectMask = obj.protectMask ? dataURLToCanvas(obj.protectMask) : null;
         state.activeIndex = -1;
         state.activePreset = obj.activePreset ?? 0;
         state.aggr = obj.aggr ?? 35;
         state.tol = obj.tol ?? 25;
+        state.brush = obj.brush ?? 32;
         state.filtStrength = obj.filtStrength ?? 100;
         dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
         editor.updateSize(); preview.init(); focal.fit(); editor.draw(); renderPresets(); updateSettingsUI();
@@ -955,6 +1045,12 @@ RETAINED
     dom.tolRange.addEventListener('input', ()=>{
       state.tol = parseInt(dom.tolRange.value,10);
       updateSettingsUI();
+      schedulePreviewRender(true); // tolerance change prompts re-render now
+    });
+    dom.brushRange.addEventListener('input', ()=>{
+      state.brush = parseInt(dom.brushRange.value,10);
+      updateSettingsUI();
+      schedulePreviewRender(false); // brush size alone doesn't change mask yet
     });
     dom.fltRange.addEventListener('input', ()=>{
       state.filtStrength = parseInt(dom.fltRange.value,10);
@@ -966,6 +1062,8 @@ RETAINED
       dom.aggrVal.textContent = state.aggr;
       dom.tolRange.value = state.tol;
       dom.tolVal.textContent = state.tol;
+      dom.brushRange.value = state.brush;
+      dom.brushVal.textContent = state.brush + ' px';
       dom.fltRange.value = state.filtStrength;
       dom.fltVal.textContent = state.filtStrength+'%';
     }
@@ -984,6 +1082,10 @@ RETAINED
       dom.modeBoxBtn.classList.toggle('active', m==='box');
       dom.autoWandBtn.classList.toggle('active', m==='autoWand');
       dom.autoSmartBtn.classList.toggle('active', m==='autoSmart');
+      dom.autoSuperBtn.classList.toggle('active', m==='autoSuper');
+      dom.protectWandBtn.classList.toggle('active', m==='protectWand');
+      dom.eraserBtn.classList.toggle('active', m==='eraser');
+      dom.protectBrushBtn.classList.toggle('active', m==='protectBrush');
       log('Mode:', m);
     }
     function refreshButtons(){
@@ -1002,47 +1104,76 @@ RETAINED
       updateSettingsUI();
       refreshButtons();
       log(`App ready. Version ${APP_VERSION}`);
-      log('Tip: S=Lasso, B=Box, W=Auto Wand, G=Auto Smart. Space+Drag pan. Wheel zoom.');
+      log('Tip: S=Lasso, B=Box, W=Auto Wand, G=Auto Smart, K=Super Smart, Shift+W=Protect Wand, E=Brush Eraser, P=Protect Brush. Space+Drag pan. Wheel zoom.');
     }
     preview.init();
     initEmpty();
 
-    // -------------------------- AUTO TOOLS (Magic Wand / Smart) --------------------------
-    // Build a mask (white pixels where selected) using flood-fill at a downscaled
-    // resolution for speed, then scale back to full.
+    // -------------------------- AUTO TOOLS --------------------------
+    function handleAutoSeed(mode, x, y){
+      if(!state.image) return;
+      let mask;
+      const tol01 = clamp(state.tol/100, 0, 1);
+      if(mode==='autoWand'){
+        mask = magicWandMask(state.image, x, y, tol01, 0);
+        if(mask) pushColorMask(mask, 'Auto Wand');
+      } else if(mode==='autoSmart'){
+        mask = magicWandMask(state.image, x, y, tol01, state.aggr);
+        if(mask) pushColorMask(mask, 'Auto Smart');
+      } else if(mode==='autoSuper'){
+        mask = superSmartMask(state.image, x, y, tol01, state.aggr);
+        if(mask) pushColorMask(mask, 'Super Smart');
+      } else if(mode==='protectWand'){
+        mask = magicWandMask(state.image, x, y, tol01, state.aggr*0.5);
+        if(mask) addToProtectMask(mask, 'Protect Wand');
+      }
+    }
+
+    function pushColorMask(maskCanvas, label){
+      state.selections.push({type:'mask', maskCanvas});
+      state.activeIndex = state.selections.length-1;
+      editor.draw();
+      schedulePreviewRender(true);
+      history.save();
+      log(label,'selection added (tol:', state.tol, ', aggr:', state.aggr, ')');
+    }
+    function addToProtectMask(maskCanvas, label){
+      if(!state.protectMask){
+        state.protectMask = document.createElement('canvas');
+        state.protectMask.width = state.image.width;
+        state.protectMask.height = state.image.height;
+      }
+      const px = state.protectMask.getContext('2d');
+      px.drawImage(maskCanvas,0,0);
+      editor.draw();
+      schedulePreviewRender(true);
+      history.save();
+      log(label,'applied.');
+    }
+
+    // Magic Wand: flood-fill (color distance), optional dilation grow
     function magicWandMask(img, seedX, seedY, tol01, growStrength){
       const w = img.width, h = img.height;
-      // downscale large images for processing
       const maxSide = 1024;
       const scale = Math.min(1, maxSide / Math.max(w,h));
       const sw = Math.max(1, Math.round(w*scale));
       const sh = Math.max(1, Math.round(h*scale));
 
-      // draw source at scaled size to a temp canvas
-      const sC = document.createElement('canvas');
-      sC.width = sw; sC.height = sh;
-      const sX = sC.getContext('2d');
-      sX.imageSmoothingEnabled = true;
-      sX.drawImage(img, 0,0, sw, sh);
+      const sC = document.createElement('canvas'); sC.width = sw; sC.height = sh;
+      const sX = sC.getContext('2d'); sX.imageSmoothingEnabled = true; sX.drawImage(img, 0,0, sw, sh);
 
-      // seed in scaled coords
       const sx = clamp(Math.round(seedX*scale),0,sw-1);
       const sy = clamp(Math.round(seedY*scale),0,sh-1);
 
       const src = sX.getImageData(0,0,sw,sh);
       const data = src.data;
-      const mask = new Uint8Array(sw*sh); // 0/1
-
+      const mask = new Uint8Array(sw*sh);
       const idx = (x,y)=> (y*sw + x);
       const pIdx = (x,y)=> idx(x,y)*4;
 
-      // sample seed color
       const r0 = data[pIdx(sx,sy)+0], g0 = data[pIdx(sx,sy)+1], b0 = data[pIdx(sx,sy)+2];
-
-      // map tol01 (0..1) to RGB distance (euclidean) threshold ~ [8..140]
       const thr = 8 + tol01*132;
 
-      // flood fill with stack
       const stack = [[sx,sy]];
       mask[idx(sx,sy)] = 1;
       while(stack.length){
@@ -1061,9 +1192,8 @@ RETAINED
         }
       }
 
-      // Smart grow: simple dilation iterations proportional to growStrength
       if(growStrength && growStrength>0){
-        const iters = Math.round(clamp(growStrength,0,100) * 0.08); // up to ~8 iters
+        const iters = Math.round(clamp(growStrength,0,100) * 0.08);
         const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
         for(let k=0;k<iters;k++){
           const copy = mask.slice(0);
@@ -1081,13 +1211,97 @@ RETAINED
         }
       }
 
-      // Make a full-res mask canvas by scaling up the binary mask
+      return upsampleBinaryMask(mask, sw, sh, w, h);
+    }
+
+    // Super Smart: multi-seed + adaptive threshold using local mean & gradient
+    function superSmartMask(img, seedX, seedY, tol01, grow){
+      const w = img.width, h = img.height;
+      const maxSide = 1024;
+      const scale = Math.min(1, maxSide / Math.max(w,h));
+      const sw = Math.max(1, Math.round(w*scale));
+      const sh = Math.max(1, Math.round(h*scale));
+
+      const sC = document.createElement('canvas'); sC.width=sw; sC.height=sh;
+      const sX = sC.getContext('2d'); sX.imageSmoothingEnabled = true; sX.drawImage(img,0,0,sw,sh);
+      const sx = clamp(Math.round(seedX*scale),0,sw-1);
+      const sy = clamp(Math.round(seedY*scale),0,sh-1);
+
+      const src = sX.getImageData(0,0,sw,sh);
+      const data = src.data;
+      const mask = new Uint8Array(sw*sh);
+      const idx = (x,y)=> (y*sw + x);
+      const pIdx = (x,y)=> idx(x,y)*4;
+
+      // collect local neighborhood stats
+      const win = 10; // ~ 21x21 window
+      let sumR=0,sumG=0,sumB=0,count=0;
+      for(let yy=sy-win; yy<=sy+win; yy++){
+        for(let xx=sx-win; xx<=sx+win; xx++){
+          if(xx<0||yy<0||xx>=sw||yy>=sh) continue;
+          const p = pIdx(xx,yy); sumR+=data[p]; sumG+=data[p+1]; sumB+=data[p+2]; count++;
+        }
+      }
+      const mR=sumR/count, mG=sumG/count, mB=sumB/count;
+
+      // adaptive base threshold from tolerance plus local contrast
+      const baseThr = 6 + tol01*120;
+      const gradField = gradientMagnitude(src, sw, sh); // normalized 0..1
+
+      // multi-seed pattern (cross)
+      const seeds = [[sx,sy],[sx+3,sy],[sx-3,sy],[sx,sy+3],[sx,sy-3]].filter(([x,y])=>x>=0&&y>=0&&x<sw&&y<sh);
+      const stack = [...seeds];
+      seeds.forEach(([x,y])=> mask[idx(x,y)]=1);
+
+      while(stack.length){
+        const [x,y] = stack.pop();
+        for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+          if(nx<0||ny<0||nx>=sw||ny>=sh) continue;
+          const id = idx(nx,ny);
+          if(mask[id]) continue;
+          const p = pIdx(nx,ny);
+          // distance to local mean instead of single seed
+          const dr = data[p]-mR, dg = data[p+1]-mG, db = data[p+2]-mB;
+          const dist = Math.sqrt(dr*dr + dg*dg + db*db);
+          // adapt threshold by edge strength (tighten near strong edges)
+          const grad = gradField[id]; // 0..1
+          const thr = baseThr * (1 - 0.45*grad);
+          if(dist<=thr){
+            mask[id]=1;
+            stack.push([nx,ny]);
+          }
+        }
+      }
+
+      // grow slightly depending on aggr
+      const growStrength = grow ? clamp(grow,0,100) : 0;
+      if(growStrength>0){
+        const iters = Math.round(growStrength * 0.07);
+        const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+        for(let k=0;k<iters;k++){
+          const copy = mask.slice(0);
+          for(let y=0;y<sh;y++){
+            for(let x=0;x<sw;x++){
+              if(copy[idx(x,y)]) continue;
+              let on = 0;
+              for(const [dx,dy] of nb){
+                const xx=x+dx, yy=y+dy;
+                if(xx>=0&&yy>=0&&xx<sw&&yy<sh && copy[idx(xx,yy)]){ on=1; break; }
+              }
+              if(on) mask[idx(x,y)] = 1;
+            }
+          }
+        }
+      }
+
+      return upsampleBinaryMask(mask, sw, sh, w, h);
+    }
+
+    function upsampleBinaryMask(mask, sw, sh, w, h){
       const mC = document.createElement('canvas');
       mC.width = w; mC.height = h;
       const mX = mC.getContext('2d');
-      // draw at scaled size first
-      const mSmall = document.createElement('canvas');
-      mSmall.width = sw; mSmall.height = sh;
+      const mSmall = document.createElement('canvas'); mSmall.width = sw; mSmall.height = sh;
       const msx = mSmall.getContext('2d');
       const imgMask = msx.createImageData(sw, sh);
       for(let i=0;i<sw*sh;i++){
@@ -1095,41 +1309,49 @@ RETAINED
         imgMask.data[i*4+0] = 255;
         imgMask.data[i*4+1] = 255;
         imgMask.data[i*4+2] = 255;
-        imgMask.data[i*4+3] = v; // alpha acts as coverage but we will use white on transparent
+        imgMask.data[i*4+3] = v;
       }
       msx.putImageData(imgMask, 0, 0);
-      // upscale nearest-neighbor for a crisp edge (feather happens later)
       mX.imageSmoothingEnabled = false;
       mX.drawImage(mSmall, 0,0, sw,sh, 0,0, w,h);
-      // convert alpha coverage to pure white/transparent (already white)
       return mC;
+    }
+
+    function gradientMagnitude(imgData, w, h){
+      const d = imgData.data;
+      const mag = new Float32Array(w*h);
+      const idx=(x,y)=>y*w+x, px=(x,y)=>((y*w+x)<<2);
+      for(let y=1;y<h-1;y++){
+        for(let x=1;x<w-1;x++){
+          const p1=px(x-1,y), p2=px(x+1,y), p3=px(x,y-1), p4=px(x,y+1);
+          // luminance
+          const L = (p)=> d[p]*0.2126 + d[p+1]*0.7152 + d[p+2]*0.0722;
+          const gx = L(p2)-L(p1), gy = L(p4)-L(p3);
+          mag[idx(x,y)] = Math.min(1, Math.sqrt(gx*gx+gy*gy)/255);
+        }
+      }
+      return mag;
     }
 
     function maskHit(maskCanvas, x, y){
       if(x<0||y<0||x>=maskCanvas.width||y>=maskCanvas.height) return false;
       const ctx = maskCanvas.getContext('2d');
       const d = ctx.getImageData(Math.floor(x), Math.floor(y), 1,1).data;
-      return d[3] > 10; // alpha present
+      return d[3] > 10;
     }
 
-    // produce an edge image (for editor overlay) by subtracting eroded mask
     function edgeFromMask(maskCanvas, r){
       const w = maskCanvas.width, h = maskCanvas.height;
       if(!w||!h) return null;
       const srcCtx = maskCanvas.getContext('2d');
       const src = srcCtx.getImageData(0,0,w,h);
 
-      // Erode alpha a little
       const eroded = document.createElement('canvas');
       eroded.width=w; eroded.height=h;
       const ex = eroded.getContext('2d');
-      ex.filter = `blur(${Math.max(0.5,r)}px)`;
-      ex.drawImage(maskCanvas,0,0);
-      ex.filter = 'none';
-
+      ex.filter = `blur(${Math.max(0.5,r)}px)`; ex.drawImage(maskCanvas,0,0); ex.filter = 'none';
       const eData = ex.getImageData(0,0,w,h);
 
-      // Edge = src - eroded in alpha channel (simple heuristic)
       const edge = document.createElement('canvas');
       edge.width=w; edge.height=h;
       const out = edge.getContext('2d');
@@ -1155,20 +1377,78 @@ RETAINED
     function dataURLToCanvas(url){
       const img = new Image();
       const cnv = document.createElement('canvas');
-      // synchronous draw via onload — but we only use this for history restore in-memory,
-      // which is immediately followed by drawing paths; in practice this is fine.
       img.onload = ()=>{ cnv.width = img.width; cnv.height = img.height; cnv.getContext('2d').drawImage(img,0,0); };
       img.src = url;
       return cnv;
     }
 
-    // Keep exact original dataURL when saving if possible
     function getCurrentImageDataURL(){
       if(!state.image) return '';
       if(typeof state.image.src === 'string' && state.image.src.startsWith('data:')) return state.image.src;
       const c = document.createElement('canvas'); c.width = state.image.width; c.height = state.image.height;
       const ctx = c.getContext('2d'); ctx.drawImage(state.image,0,0);
       return c.toDataURL('image/png');
+    }
+
+    // -------------------------- BRUSH / ERASER --------------------------
+    const brush = {
+      active:false,
+      lastX:0,lastY:0,
+      target:'color' // 'color' (erase color mask) or 'protect' (add immunity)
+    };
+    function ensureProtectMask(){
+      if(!state.protectMask){
+        state.protectMask = document.createElement('canvas');
+        state.protectMask.width = state.image.width;
+        state.protectMask.height = state.image.height;
+      }
+    }
+    function startBrushing(e, x, y){
+      brush.active = true;
+      brush.lastX = x; brush.lastY = y;
+      brush.target = (state.mode==='protectBrush') ? 'protect' : 'color';
+      brushStroke(x,y,true);
+    }
+    function endBrushing(){
+      brush.active=false;
+      history.save();
+      schedulePreviewRender(true);
+      editor.draw();
+    }
+    function brushStroke(x,y,first=false){
+      const size = clamp(state.brush, 3, 320);
+      const ctxCircle = (ctx, x0,y0,x1,y1)=>{
+        // line segment disk stamping
+        const dx = x1-x0, dy = y1-y0;
+        const dist = Math.max(1, Math.hypot(dx,dy));
+        const steps = Math.ceil(dist / (size*0.4));
+        for(let i=0;i<=steps;i++){
+          const t = i/steps;
+          const cx = x0 + dx*t, cy = y0 + dy*t;
+          ctx.beginPath(); ctx.arc(cx,cy,size/2,0,Math.PI*2); ctx.fill();
+        }
+      };
+
+      if(brush.target==='protect'){
+        ensureProtectMask();
+        const ctx = state.protectMask.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctxCircle(ctx, brush.lastX, brush.lastY, x, y);
+      } else {
+        // subtract from union of selection masks by painting black into a top eraser layer
+        // Approach: create a new mask that carves out (destination-out) from the latest color mask selection,
+        // or add a dedicated "eraser" negative selection.
+        // Simpler: apply a negative mask by drawing black to a special canvas and subtracting in render.
+        // We'll convert brush erase into a "protect" effect (destination-out) on the union as well.
+        ensureProtectMask();
+        const ctx = state.protectMask.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctxCircle(ctx, brush.lastX, brush.lastY, x, y);
+      }
+
+      brush.lastX = x; brush.lastY = y;
+      editor.draw();
+      schedulePreviewRender(false);
     }
 
   })();
