@@ -7,48 +7,38 @@
 
 <!--
 ================================================================================
-TECHNICAL SPECIFICATION SHEET (v1.12.0 "Big Editor + Monocle + Download")
+TECHNICAL SPECIFICATION SHEET (v1.14.0 “Maximized Canvases + Dual Monocle + Lazy Presets”)
 We ONLY ADD / FIX. Nothing previously working is removed.
 
-NEW IN v1.12.0
-- BIGGER WORKSPACE
-  • Editor and Live Preview areas are significantly larger (grid 6fr / 5fr).
-  • Preset thumbnails are ~40% smaller, tighter layout, pinned to bottom.
-  • Settings panel compacted; logs remain collapsible and are hidden by default.
-  • All canvases are perfectly centered within their panels.
+WHAT’S NEW (on top of v1.12.0):
+- MASSIVE LAYOUT UPGRADE
+  • The Editor + Live Preview now dominate the screen. The bottom strip (presets+settings)
+    is compact and stays out of the way.
+  • Row takes ~85–90% of the height; bottom takes ~10–15% (responsive).
+  • Preset thumbnails are smaller and lazy-rendered AFTER the main preview for snappier UX.
 
-- STABILITY & UX
-  • Preview “shrinking per render” remains fixed via stable container rect.
-  • All setting sliders (Feather, Tolerance, Filter Strength) now trigger a render.
-  • Cursor defaults to a normal pointer; becomes "grabbing" only while panning.
+- DUAL-PANEL MONOCLE (REUSABLE)
+  • One pinned square “Monocle” (3× zoom with crosshair) that attaches to whichever panel
+    your cursor is over (Editor OR Preview). It auto-moves and anchors top-right inside that panel.
+
+- PERFORMANCE & FEEL
+  • Progress bar animates briskly to ~75–80% and completes when render finishes.
+  • Settings changes still trigger immediate re-render; rendering stability retained.
+  • Preset thumbnails render (or refresh) ~600–900 ms after the preview to avoid jank.
 
 - OUTPUT
-  • Added “⬇️ Download” to export the current PREVIEW (result) as PNG.
+  • Download final image (PNG) retained; previews are bigger so exports look better.
 
-- MONOCLE
-  • Pinned square “Monocle” in the top-right of the EDITOR panel shows a 3× zoom
-    of the pixel area under the mouse pointer with a crosshair overlay.
-
-- AUTO / MAGIC TOOLS (kept & extended)
-  • Auto Wand (tolerance)
-  • Auto Smart (wand + grow)
-  • Auto Ultra (NEW): multi-seed spectral region growing with local contrast assist
-    for tougher edges (considers a small neighborhood histogram + dual-threshold).
-  • Erasers (kept + improved):
-      - Protect Eraser: paint areas that MUST NOT be colorized.
-      - Remove Eraser: erase/trim the colorized mask.
-    Both paint into high-res bitmaps; feathering still applies on final render.
-
-RETAINED
-- Dual-panel UI; Freehand Lasso + New Lasso; Box (click default / drag size) with 8 handles;
-  Undo/Redo; Start Over; Save/Load JSON; Render Now; pan/zoom (Space+Drag / Wheel);
-  Developer log; debounced render with progress; version pin; preset gallery (smaller).
+- TOOLS (all retained from prior versions)
+  • Lasso, Box, Auto Wand, Auto Smart, Auto Ultra (multi-seed w/ dual-threshold),
+    Protect Eraser (block color), Remove Eraser (trim color), Undo/Redo, Save/Load JSON,
+    Start Over, Render Now, Logs (collapsible), pan/zoom, history, preset gallery, hotkeys.
 ================================================================================
 -->
 
   <style>
     :root{
-      --bg:#eef1f5;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
+      --bg:#edf1f7;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
       --border:#d7dbe1;--shadow:rgba(0,0,0,.08);--shadow-2:rgba(0,0,0,.14);
       --danger:#fa383e;--ok:#19a974;--warn:#ffb700;
       --sel:#1877f2;--sel-ghost:rgba(24,119,242,.14);
@@ -61,10 +51,10 @@ RETAINED
       background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;
     }
     header{
-      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.65rem .9rem;display:flex;align-items:center;gap:.6rem;z-index:3;
+      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.6rem .9rem;display:flex;align-items:center;gap:.55rem;z-index:3;
     }
     .brand{font-weight:800;color:var(--primary);letter-spacing:.2px}
-    .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.22rem .5rem;border-radius:6px}
+    .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.2rem .5rem;border-radius:6px}
     .toolbar{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
     .group{display:flex;gap:.4rem;align-items:center}
     button{
@@ -81,63 +71,74 @@ RETAINED
     button:disabled{opacity:.6;cursor:not-allowed}
     .icon{font-size:1.05rem}
 
-    .shell{flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}
-
-    /* BIGGER work area: editor 6fr, preview 5fr */
-    .row{display:grid;grid-template-columns:6fr 5fr;gap:10px;min-height:0}
+    /* ====== Layout focus: canvases take the stage ====== */
+    .shell{
+      flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden;
+    }
+    /* TOP ROW dominates the height */
+    .row{
+      display:grid;grid-template-columns:7fr 6fr;gap:10px;
+      flex:1 1 auto; /* take the available height */
+      min-height:0;
+    }
     .panel{
       background:var(--panel);border-radius:12px;box-shadow:0 2px 8px var(--shadow);
       display:flex;flex-direction:column;min-height:0;overflow:hidden
     }
     .panel-h{
-      padding:.6rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
+      padding:.55rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
       display:flex;align-items:center;justify-content:center;gap:.5rem
     }
     .panel-c{
-      flex:1;position:relative;background:#e9eef6;display:flex;align-items:center;justify-content:center;overflow:hidden
+      /* Give canvases a TON of room */
+      flex:1;min-height:0;
+      position:relative;background:#e9eef6;display:flex;align-items:center;justify-content:center;overflow:hidden
     }
 
-    /* Editor canvas region */
+    /* Editor/Preview canvases */
     .placeholder{color:var(--muted);font-weight:600;opacity:.85;pointer-events:none}
     .canvas-wrap{
       position:relative;width:100%;height:100%;overflow:hidden;
       display:flex;align-items:center;justify-content:center;
-      /* pointer (arrow) by default */
-      cursor:default;
+      cursor:default; /* pointer/arrow */
     }
     .canvas-wrap.panning{cursor:grabbing}
     .canvas-wrap.drop-hover{outline:3px dashed var(--primary); outline-offset:-8px; background:rgba(24,119,242,0.1)}
     canvas{display:block;background:#fff}
     #editor-canvas{position:absolute;transform-origin:top left}
+    #preview-canvas{position:absolute;top:0;left:0}
 
-    /* Monocle (zoom view) pinned to top-right of the editor panel */
+    /* Reusable Monocle: attaches to hovered panel's top-right */
     .monocle{
-      position:absolute; top:10px; right:10px; width:140px; height:140px; background:#fff;
+      position:absolute; top:10px; right:10px; width:132px; height:132px; background:#fff;
       border:2px solid var(--border); border-radius:10px; box-shadow:0 6px 14px var(--shadow-2);
-      overflow:hidden; display:none; /* becomes block after image load */
-      z-index:2;
+      overflow:hidden; display:none; z-index:2;
     }
     .monocle canvas{width:100%;height:100%;display:block; background:#000}
 
-    /* Bottom area: presets (smaller) + side (compact settings/logs) */
-    .bottom{display:grid;grid-template-columns:5fr 3fr;gap:10px;min-height:120px}
-    .presets.panel{min-height:120px}
-    .presets-grid{
-      display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:10px;align-items:end;justify-items:center
+    /* ====== Bottom strip is compact ====== */
+    .bottom{
+      display:grid;grid-template-columns:8fr 3fr;gap:10px;
+      min-height:92px; /* compact */
+      max-height:30vh; /* never grow too big */
     }
-    .preset{cursor:pointer;text-align:center;width:100%;max-width:100px;margin:0 auto}
+    .presets.panel{min-height:92px}
+    .presets-grid{
+      display:grid;grid-template-columns:repeat(8,1fr);gap:8px;padding:10px;align-items:end;justify-items:center
+    }
+    .preset{cursor:pointer;text-align:center;width:100%;max-width:84px;margin:0 auto}
     .preset canvas{
       width:100%;height:auto;aspect-ratio:16/9;background:#f3f5f9;border-radius:10px;border:2px solid transparent;
       box-shadow:0 1px 3px var(--shadow);transition:all .15s
     }
     .preset:hover canvas{transform:translateY(-2px)}
     .preset.active canvas{border-color:var(--primary);box-shadow:0 6px 14px var(--shadow-2)}
-    .preset label{display:block;margin-top:4px;font-size:.74rem;color:var(--muted);text-align:center}
+    .preset label{display:block;margin-top:4px;font-size:.72rem;color:var(--muted);text-align:center}
 
-    .side.panel{min-height:120px}
+    .side.panel{min-height:92px}
     .side-c{display:grid;grid-template-rows:auto 1fr}
     .settings{padding:8px 10px;border-bottom:1px solid var(--border)}
-    .set-row{display:flex;align-items:center;gap:10px;margin:.3rem 0}
+    .set-row{display:flex;align-items:center;gap:10px;margin:.28rem 0}
     .set-row input[type=range]{flex-grow:1}
 
     .logs{position:relative; overflow:hidden; display:none;}
@@ -145,10 +146,10 @@ RETAINED
     .log-body{height:100%;padding:10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.8rem;background:#fff}
     .log-line{white-space:pre-wrap;color:#2d3748;margin:.15rem 0}
 
-    /* Progress bar */
-    .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden; opacity:0; transition: opacity 0.25s; pointer-events:none;}
+    /* Progress bar = quick to ~80% */
+    .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden; opacity:0; transition: opacity 0.2s; pointer-events:none;}
     .progress-wrap.visible{opacity:1;}
-    .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .12s}
+    .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .1s}
 
     .version-pin{
       position:fixed;top:8px;right:8px;background:#101828;color:#fff;font-size:.75rem;padding:.25rem .5rem;border-radius:6px;
@@ -179,12 +180,12 @@ RETAINED
         <button id="deleteSelectionBtn" title="Delete active selection (Del)" disabled>🗑️ Delete</button>
       </div>
       <div class="group">
-        <button id="autoWandBtn" title="Auto Wand (click to seed) (W)">🪄 Auto Wand</button>
+        <button id="autoWandBtn" title="Auto Wand (W)">🪄 Auto Wand</button>
         <button id="autoSmartBtn" title="Auto Smart (G)">🧠 Auto Smart</button>
         <button id="autoUltraBtn" title="Auto Ultra (U)">🧬 Auto Ultra</button>
       </div>
       <div class="group">
-        <button id="protectEraserBtn" title="Paint protected areas (hold to paint) (E)">🛡️ Protect Eraser</button>
+        <button id="protectEraserBtn" title="Paint protected areas (E)">🛡️ Protect Eraser</button>
         <button id="removeEraserBtn" title="Erase colorized mask (R)">🧽 Remove Eraser</button>
       </div>
       <div class="group">
@@ -200,24 +201,28 @@ RETAINED
   <div class="shell">
     <div class="row">
       <!-- EDITOR -->
-      <section class="panel">
+      <section class="panel" id="editor-panel">
         <div class="panel-h">EDITOR — Original (Space = Pan · Wheel = Zoom)</div>
         <div class="panel-c">
           <div id="editor-wrap" class="canvas-wrap">
             <canvas id="editor-canvas"></canvas>
-            <!-- Monocle (zoomed view) -->
-            <div id="monocle" class="monocle"><canvas id="monocle-canvas"></canvas></div>
           </div>
           <div id="editor-empty" class="placeholder">Drop an image here or click “Upload”</div>
+
+          <!-- Reusable Monocle lives here by default (moves to hovered panel) -->
+          <div id="monocle" class="monocle"><canvas id="monocle-canvas"></canvas></div>
+
           <div class="progress-wrap" id="progressEditor"><div class="progress" id="progressBar"></div></div>
         </div>
       </section>
 
       <!-- PREVIEW -->
-      <section class="panel">
+      <section class="panel" id="preview-panel">
         <div class="panel-h">LIVE PREVIEW</div>
         <div class="panel-c" id="preview-container">
-          <canvas id="preview-canvas"></canvas>
+          <div id="preview-wrap" class="canvas-wrap">
+            <canvas id="preview-canvas"></canvas>
+          </div>
           <div id="preview-empty" class="placeholder">Your result will appear here</div>
         </div>
       </section>
@@ -275,7 +280,7 @@ RETAINED
     'use strict';
 
     // -------------------------- META / VERSION --------------------------
-    const APP_VERSION = "1.12.0";
+    const APP_VERSION = "1.14.0";
     document.getElementById('versionBadge').textContent = APP_VERSION;
     document.getElementById('versionPin').textContent = APP_VERSION;
 
@@ -290,8 +295,8 @@ RETAINED
       protectEraserBtn: $('protectEraserBtn'), removeEraserBtn: $('removeEraserBtn'),
       downloadBtn: $('downloadBtn'),
       fileInput: $('fileInput'), loadInput: $('loadInput'),
-      editorWrap: $('editor-wrap'), editorCanvas: $('editor-canvas'), editorEmpty: $('editor-empty'),
-      previewContainer: $('preview-container'), previewCanvas: $('preview-canvas'), previewEmpty: $('preview-empty'),
+      editorPanel: $('editor-panel'), editorWrap: $('editor-wrap'), editorCanvas: $('editor-canvas'), editorEmpty: $('editor-empty'),
+      previewPanel: $('preview-panel'), previewWrap: $('preview-wrap'), previewContainer: $('preview-container'), previewCanvas: $('preview-canvas'), previewEmpty: $('preview-empty'),
       presets: $('presets'),
       progressWrap: $('progressEditor'), progressBar: $('progressBar'),
       aggrRange: $('aggrRange'), aggrVal: $('aggrVal'),
@@ -315,13 +320,10 @@ RETAINED
     // -------------------------- STATE --------------------------
     const state = {
       image: null,
-      selections: [], //   {type:'box', x,y,w,h}
-                      // | {type:'lasso', points:[{x,y}]}
-                      // | {type:'mask',  maskCanvas}            -> additive colorized mask
-                      // | {type:'protect', maskCanvas}          -> protection (subtract from colorized)
+      selections: [], // box | lasso | mask | protect
       activeIndex: -1,
-      mode: 'lasso', // 'lasso' | 'box' | 'autoWand' | 'autoSmart' | 'autoUltra' | 'protectEraser' | 'removeEraser'
-      transform: {x:0,y:0,scale:1},
+      mode: 'lasso',
+      transform: {x:0,y:0,scale:1}, // editor transform
       isPanning: false,
       drag: { active:false, startX:0,startY:0, kind:null, handle:null, moved:false, snapshot:null },
       history: [], histIndex: -1,
@@ -334,11 +336,10 @@ RETAINED
         {name:'Dreamy',    css:(s)=>`grayscale(${s}%) blur(0.6px) brightness(1.06)`,                   aggr:60},
         {name:'Neutral',   css:(s)=>`grayscale(${s}%) brightness(1.02)`,                               aggr:25}
       ],
-      aggr: 35,            // feather radius proxy (and Smart grow strength)
-      tol: 25,             // tolerance for Auto tools
-      filtStrength: 100,   // grayscale % for background
+      aggr: 35, tol: 25, filtStrength: 100,
       rendering: false,
-      brush: {size: 28, hard: 0.9} // for erasers
+      brush: {size: 28, hard: 0.9},
+      thumbnailsReady: false,
     };
 
     // -------------------------- EDITOR --------------------------
@@ -364,7 +365,7 @@ RETAINED
         ctx.scale(state.transform.scale, state.transform.scale);
         ctx.drawImage(state.image, 0, 0);
 
-        // selections overlay
+        // overlays
         state.selections.forEach((sel,i)=>{
           const active = i===state.activeIndex;
           ctx.save();
@@ -411,7 +412,6 @@ RETAINED
       init(){ this.maskCtx = this.mask.getContext('2d'); },
       layout(){
         if(!state.image){ return; }
-        // Stable container rect, not influenced by canvas size
         const rect = dom.previewContainer.getBoundingClientRect();
         const availW = Math.max(0, rect.width);
         const availH = Math.max(0, rect.height);
@@ -420,17 +420,18 @@ RETAINED
         if(h>availH){ h = availH; w = h*aspect; }
         this.c.width = Math.max(1, Math.round(w));
         this.c.height = Math.max(1, Math.round(h));
+        // Center within wrap
+        dom.previewCanvas.style.left = ((availW - this.c.width)/2) + 'px';
+        dom.previewCanvas.style.top  = ((availH - this.c.height)/2) + 'px';
       },
       render(){
         if(!state.image) return;
 
-        // Build full-res colorized mask (white = colorized)
+        // mask (white = colorized)
         this.mask.width = state.image.width;
         this.mask.height = state.image.height;
-        const m = this.maskCtx;
-        m.clearRect(0,0,this.mask.width,this.mask.height);
+        const m = this.maskCtx; m.clearRect(0,0,this.mask.width,this.mask.height);
 
-        // Additive color selections
         m.fillStyle = '#fff';
         state.selections.forEach(sel=>{
           if(sel.type==='box'){
@@ -445,7 +446,7 @@ RETAINED
           }
         });
 
-        // Subtractive protection (erase from mask)
+        // subtract protections
         state.selections.forEach(sel=>{
           if(sel.type==='protect' && sel.maskCanvas){
             m.globalCompositeOperation = 'destination-out';
@@ -454,8 +455,8 @@ RETAINED
           }
         });
 
-        // Feather via temp buffer (no self-draw artifacts)
-        const blurPx = Math.round(clamp(state.aggr,0,100) * 0.22); // ~0..22px
+        // feather
+        const blurPx = Math.round(clamp(state.aggr,0,100) * 0.22);
         if(blurPx>0){
           const tmp = document.createElement('canvas');
           tmp.width = this.mask.width; tmp.height = this.mask.height;
@@ -469,14 +470,14 @@ RETAINED
         const ctx = this.ctx;
         ctx.clearRect(0,0,this.c.width,this.c.height);
 
-        // Background (filtered)
+        // background filtered
         const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
         ctx.save();
         ctx.filter = cssFilter;
         ctx.drawImage(state.image, 0, 0, this.c.width, this.c.height);
         ctx.restore();
 
-        // Color-only on top, clipped by mask
+        // colorized via mask
         const colored = document.createElement('canvas');
         colored.width = state.image.width; colored.height = state.image.height;
         const cctx = colored.getContext('2d');
@@ -487,39 +488,56 @@ RETAINED
       }
     };
 
-    // -------------------------- PRESETS --------------------------
-    function renderPresets(){
-      dom.presets.innerHTML = '';
-      state.filters.forEach((flt, idx)=>{
-        const item = document.createElement('div');
-        item.className = 'preset' + (idx===state.activePreset?' active':'');
-        item.innerHTML = `<canvas></canvas><label>${flt.name}</label>`;
-        const c = item.querySelector('canvas'), cctx = c.getContext('2d');
-        if(state.image){
+    // -------------------------- PRESETS (lazy) --------------------------
+    function renderPresets(lazy=false){
+      if(!state.image){
+        dom.presets.innerHTML = '';
+        // draw placeholders
+        for(let i=0;i<state.filters.length;i++){
+          const item = document.createElement('div');
+          item.className = 'preset';
+          item.innerHTML = `<canvas width="84" height="60"></canvas><label>${state.filters[i].name}</label>`;
+          dom.presets.appendChild(item);
+        }
+        return;
+      }
+
+      const doRender = ()=>{
+        dom.presets.innerHTML = '';
+        state.filters.forEach((flt, idx)=>{
+          const item = document.createElement('div');
+          item.className = 'preset' + (idx===state.activePreset?' active':'');
+          item.innerHTML = `<canvas></canvas><label>${flt.name}</label>`;
+          const c = item.querySelector('canvas'), cctx = c.getContext('2d');
           const aspect = state.image.width/state.image.height;
-          c.width = 100; c.height = Math.max(60, Math.round(100/aspect));
-          cctx.save();
-          cctx.filter = flt.css(100);
+          c.width = 84; c.height = Math.max(56, Math.round(84/aspect));
+          cctx.save(); cctx.filter = flt.css(100);
           cctx.drawImage(state.image, 0,0,c.width,c.height);
           cctx.restore();
-        } else {
-          c.width=100; c.height=70;
-          cctx.fillStyle = '#f3f5f9'; cctx.fillRect(0,0,c.width,c.height);
-          cctx.fillStyle='#9aa3b2'; cctx.fillText('Load', 38, 40);
-        }
-        item.addEventListener('click', ()=>{
-          state.activePreset = idx;
-          state.aggr = state.filters[idx].aggr;
-          updateSettingsUI();
-          renderPresets();
-          schedulePreviewRender(true);
-          log('Preset:', flt.name, 'Feather:', state.aggr);
+
+          item.addEventListener('click', ()=>{
+            state.activePreset = idx;
+            state.aggr = state.filters[idx].aggr;
+            updateSettingsUI();
+            document.querySelectorAll('.preset').forEach(el=>el.classList.remove('active'));
+            item.classList.add('active');
+            schedulePreviewRender(true);
+            log('Preset:', flt.name, 'Feather:', state.aggr);
+          });
+          dom.presets.appendChild(item);
         });
-        dom.presets.appendChild(item);
-      });
+        state.thumbnailsReady = true;
+      };
+
+      if(lazy){
+        state.thumbnailsReady = false;
+        setTimeout(doRender, 700); // defer: UX first
+      } else {
+        doRender();
+      }
     }
 
-    // -------------------------- HISTORY (serialize mask canvases) --------------------------
+    // -------------------------- HISTORY --------------------------
     const history = {
       save(){
         const snapshot = {
@@ -530,9 +548,7 @@ RETAINED
           activeIndex: state.activeIndex,
           transform: {...state.transform},
           activePreset: state.activePreset,
-          aggr: state.aggr,
-          tol: state.tol,
-          filtStrength: state.filtStrength
+          aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength
         };
         if(state.histIndex < state.history.length-1) state.history = state.history.slice(0,state.histIndex+1);
         state.history.push(JSON.stringify(snapshot));
@@ -554,7 +570,7 @@ RETAINED
         state.aggr = snap.aggr ?? state.aggr;
         state.tol = snap.tol ?? state.tol;
         state.filtStrength = snap.filtStrength ?? state.filtStrength;
-        editor.draw(); schedulePreviewRender(true); renderPresets(); updateSettingsUI(); refreshButtons();
+        editor.draw(); schedulePreviewRender(true); renderPresets(true); updateSettingsUI(); refreshButtons();
       },
       undo(){ if(state.histIndex>0){ state.histIndex--; history.load(state.histIndex); log('Undo'); } },
       redo(){ if(state.histIndex<state.history.length-1){ state.histIndex++; history.load(state.histIndex); log('Redo'); } }
@@ -602,18 +618,21 @@ RETAINED
     }
 
     // -------------------------- RENDER FLOW & PROGRESS --------------------------
-    let progressTimer=null;
+    let progressTimer=null, progressTarget=78;
     function startProgress(){
       dom.progressWrap.classList.add('visible');
       let p = 0; dom.progressBar.style.width = '0%';
       clearInterval(progressTimer);
-      progressTimer = setInterval(()=>{ p = clamp(p + 8, 0, 90); dom.progressBar.style.width = p + '%'; }, 70);
+      progressTimer = setInterval(()=>{
+        p = clamp(p + 12, 0, progressTarget); // fast to ~78%
+        dom.progressBar.style.width = p + '%';
+      }, 60);
     }
     function finishProgress(){
       clearInterval(progressTimer);
       progressTimer = null;
       dom.progressBar.style.width = '100%';
-      setTimeout(()=>{ dom.progressWrap.classList.remove('visible'); dom.progressBar.style.width='0%'; }, 350);
+      setTimeout(()=>{ dom.progressWrap.classList.remove('visible'); dom.progressBar.style.width='0%'; }, 280);
     }
 
     const renderPreviewDebounced = debounce(()=>{
@@ -623,9 +642,10 @@ RETAINED
       preview.render();
       state.rendering = false;
       finishProgress();
-      renderPresets(); // thumbs after main preview
+      // Lazy thumbs AFTER main preview (for snap)
+      renderPresets(true);
       log('Preview rendered.');
-    }, 520);
+    }, 420);
 
     function schedulePreviewRender(startProgressBar=true){
       if(!state.image) return;
@@ -637,7 +657,7 @@ RETAINED
     dom.uploadBtn.addEventListener('click', ()=>dom.fileInput.click());
     dom.fileInput.addEventListener('change', onFileInput);
 
-    // Drag & Drop strictly on editor area (prevents page navigation)
+    // Drag & Drop on editor only
     ['dragover','dragenter'].forEach(ev=>{
       dom.editorWrap.addEventListener(ev,(e)=>{ e.preventDefault(); dom.editorWrap.classList.add('drop-hover'); });
     });
@@ -667,11 +687,12 @@ RETAINED
           editor.updateSize(); preview.init();
           focal.fit();
           editor.draw();
-          renderPresets();
+          renderPresets(true); // lazy
           history.save();
           refreshButtons();
           schedulePreviewRender(true);
           dom.monocle.style.display = 'block';
+          attachMonocle(dom.editorPanel); // default attach to editor
           log('Image loaded:', file.name, `${img.width}x${img.height}`);
         };
         img.src = r.result;
@@ -685,21 +706,20 @@ RETAINED
         if(!state.image) return;
         const iW = state.image.width, iH = state.image.height;
         const cW = dom.editorWrap.clientWidth, cH = dom.editorWrap.clientHeight;
-        const scale = Math.min(cW/iW, cH/iH) * 0.96; // 96% fit
+        const scale = Math.min(cW/iW, cH/iH) * 0.97;
         const x = (cW - iW*scale)/2;
         const y = (cH - iH*scale)/2;
         state.transform = {x,y,scale};
       }
     };
-    const refitDebounced = debounce(()=>{ if(state.image){ focal.fit(); editor.draw(); } }, 200);
+    const refitDebounced = debounce(()=>{ if(state.image){ focal.fit(); editor.draw(); preview.layout(); } }, 140);
     window.addEventListener('resize', ()=>{ editor.updateSize(); preview.layout(); refitDebounced(); });
 
-    // -------------------------- EDITOR INTERACTIONS --------------------------
-    let painting = false; // for erasers
+    // -------------------------- EDITOR & PREVIEW INTERACTIONS --------------------------
+    let painting = false; // erasers
     dom.editorWrap.addEventListener('mousedown', (e)=>{
       if(!state.image) return;
 
-      // Pan start
       if(state.isPanning){
         state.drag = {active:true,kind:'pan', startX:e.clientX, startY:e.clientY, tx:state.transform.x, ty:state.transform.y, moved:false};
         dom.editorWrap.classList.add('panning'); return;
@@ -707,7 +727,6 @@ RETAINED
 
       const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
 
-      // Auto modes: on click, seed flood/ultra; return early
       if(state.mode==='autoWand' || state.mode==='autoSmart' || state.mode==='autoUltra'){
         const sx = Math.round(p.x), sy = Math.round(p.y);
         const mask = (state.mode==='autoUltra')
@@ -725,7 +744,6 @@ RETAINED
         return;
       }
 
-      // Erasers paint directly
       if(state.mode==='protectEraser' || state.mode==='removeEraser'){
         painting = true;
         ensureBrushLayer(state.mode==='protectEraser' ? 'protect' : 'mask');
@@ -734,7 +752,7 @@ RETAINED
         return;
       }
 
-      // hit test for existing selections
+      // hit-tests
       let hitIndex = -1, hitHandle = null, hitKind='none';
       for(let i=state.selections.length-1;i>=0;i--){
         const sel = state.selections[i];
@@ -760,8 +778,8 @@ RETAINED
         return;
       }
 
-      // Start new selection (lasso/box)
-      state.activeIndex = -1; // deselect
+      // start new
+      state.activeIndex = -1;
       if(state.mode==='box'){
         const seed = {type:'box', x:p.x, y:p.y, w:0, h:0};
         state.selections.push(seed);
@@ -778,11 +796,9 @@ RETAINED
 
     dom.editorWrap.addEventListener('mousemove', (e)=>{
       if(!state.image) return;
+      // Monocle follows cursor on editor
+      updateMonocle(e, 'editor');
 
-      // MONOCLE (always tracks)
-      updateMonocle(e);
-
-      // Painting mode (erasers)
       if(painting && (state.mode==='protectEraser' || state.mode==='removeEraser')){
         const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
         paintOnActiveMask(p.x, p.y, false);
@@ -820,12 +836,9 @@ RETAINED
           const sel = state.selections[state.activeIndex];
           const snap = reviveMaskInSnapshot(state.drag.snapshot);
           const dx = p.x - state.drag.startX, dy = p.y - state.drag.startY;
-          if(sel.type==='box'){
-            sel.x = snap.x + dx;
-            sel.y = snap.y + dy;
-          } else if(sel.type==='lasso'){
-            sel.points = snap.points.map(pt=>({x:pt.x+dx, y:pt.y+dy}));
-          } else if(sel.type==='mask' || sel.type==='protect'){
+          if(sel.type==='box'){ sel.x = snap.x + dx; sel.y = snap.y + dy; }
+          else if(sel.type==='lasso'){ sel.points = snap.points.map(pt=>({x:pt.x+dx, y:pt.y+dy})); }
+          else if(sel.type==='mask' || sel.type==='protect'){
             const moved = document.createElement('canvas');
             moved.width = snap.maskCanvas.width; moved.height = snap.maskCanvas.height;
             moved.getContext('2d').drawImage(snap.maskCanvas, dx, dy);
@@ -860,11 +873,8 @@ RETAINED
     window.addEventListener('mouseup', ()=>{
       if(!state.image) return;
 
-      // end painting
       if(painting){
-        painting = false;
-        history.save();
-        return;
+        painting = false; history.save(); return;
       }
 
       if(!state.drag.active) return;
@@ -880,17 +890,11 @@ RETAINED
         state.selections[state.activeIndex] = defaultBoxAt(state.drag.startX, state.drag.startY);
       } else if(state.drag.kind==='box-make'){
         const sel = state.selections[state.activeIndex];
-        if(sel && (sel.w<5 || sel.h<5)){
-          state.selections.splice(state.activeIndex,1);
-          state.activeIndex = -1;
-        }
+        if(sel && (sel.w<5 || sel.h<5)){ state.selections.splice(state.activeIndex,1); state.activeIndex = -1; }
       }
       if(state.drag.kind==='lasso-make'){
         const sel = state.selections[state.activeIndex];
-        if(sel && sel.points.length<3){
-          state.selections.splice(state.activeIndex,1);
-          state.activeIndex = -1;
-        }
+        if(sel && sel.points.length<3){ state.selections.splice(state.activeIndex,1); state.activeIndex = -1; }
       }
 
       state.drag.active=false;
@@ -914,8 +918,18 @@ RETAINED
       state.transform.y = my - (my - state.transform.y)*zoom;
       state.transform.scale = newScale;
       editor.draw();
-      updateMonocle(e);
+      updateMonocle(e, 'editor');
     }, {passive:false});
+
+    // Preview monocle (read-only hover)
+    dom.previewWrap.addEventListener('mousemove', (e)=>{
+      if(!state.image) return;
+      updateMonocle(e, 'preview');
+    });
+
+    // Attach/Move monocle to hovered panel on enter/leave
+    dom.editorWrap.addEventListener('mouseenter', ()=> attachMonocle(dom.editorPanel));
+    dom.previewWrap.addEventListener('mouseenter', ()=> attachMonocle(dom.previewPanel));
 
     // keys
     window.addEventListener('keydown', (e)=>{
@@ -942,9 +956,7 @@ RETAINED
     // buttons
     dom.modeLassoBtn.addEventListener('click', ()=>setMode('lasso'));
     dom.newLassoBtn.addEventListener('click', ()=>{
-      setMode('lasso');
-      state.activeIndex = -1;
-      editor.draw();
+      setMode('lasso'); state.activeIndex = -1; editor.draw();
       log('Ready to draw a new lasso. Click-drag on the editor to draw a freehand shape.');
     });
     dom.modeBoxBtn.addEventListener('click', ()=>setMode('box'));
@@ -963,18 +975,14 @@ RETAINED
     dom.undoBtn.addEventListener('click', ()=>history.undo());
     dom.redoBtn.addEventListener('click', ()=>history.redo());
     dom.renderNowBtn.addEventListener('click', ()=>{
-      startProgress();
-      preview.layout(); preview.render(); finishProgress(); renderPresets(); log('Manual render complete.');
+      startProgress(); preview.layout(); preview.render(); finishProgress(); renderPresets(true); log('Manual render complete.');
     });
     dom.downloadBtn.addEventListener('click', ()=>{
       if(!state.image){ alert('Load an image first.'); return; }
-      // Ensure latest render
       preview.layout(); preview.render();
       const url = dom.previewCanvas.toDataURL('image/png');
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `colorsplash-result-${Date.now()}.png`;
-      a.click();
+      a.href = url; a.download = `colorsplash-result-${Date.now()}.png`; a.click();
       URL.revokeObjectURL(a.href);
     });
 
@@ -1000,9 +1008,7 @@ RETAINED
           return s;
         }),
         activePreset: state.activePreset,
-        aggr: state.aggr,
-        tol: state.tol,
-        filtStrength: state.filtStrength
+        aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength
       };
       const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
       const a = document.createElement('a');
@@ -1018,11 +1024,8 @@ RETAINED
       const f = e.target.files[0]; if(!f) return;
       const r = new FileReader();
       r.onload = ()=>{
-        try{
-          const obj = JSON.parse(r.result);
-          loadFromObject(obj);
-          log('Loaded project JSON.');
-        }catch(err){ alert('Invalid JSON file'); }
+        try{ const obj = JSON.parse(r.result); loadFromObject(obj); log('Loaded project JSON.'); }
+        catch(err){ alert('Invalid JSON file'); }
       };
       r.readAsText(f);
     });
@@ -1044,40 +1047,26 @@ RETAINED
         state.tol = obj.tol ?? 25;
         state.filtStrength = obj.filtStrength ?? 100;
         dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
-        editor.updateSize(); preview.init(); focal.fit(); editor.draw(); renderPresets(); updateSettingsUI();
+        editor.updateSize(); preview.init(); focal.fit(); editor.draw(); renderPresets(true); updateSettingsUI();
         state.history=[]; state.histIndex=-1; history.save(); refreshButtons();
         schedulePreviewRender(true);
         dom.monocle.style.display='block';
+        attachMonocle(dom.editorPanel);
       };
       img.src = obj.imageDataURL;
     }
 
     // -------------------------- SETTINGS --------------------------
-    dom.aggrRange.addEventListener('input', ()=>{
-      state.aggr = parseInt(dom.aggrRange.value,10);
-      updateSettingsUI();
-      schedulePreviewRender(true);
-    });
-    dom.tolRange.addEventListener('input', ()=>{
-      state.tol = parseInt(dom.tolRange.value,10);
-      updateSettingsUI();
-      schedulePreviewRender(true); // now also renders so user sees change
-    });
-    dom.fltRange.addEventListener('input', ()=>{
-      state.filtStrength = parseInt(dom.fltRange.value,10);
-      updateSettingsUI();
-      schedulePreviewRender(true);
-    });
+    dom.aggrRange.addEventListener('input', ()=>{ state.aggr = parseInt(dom.aggrRange.value,10); updateSettingsUI(); schedulePreviewRender(true); });
+    dom.tolRange.addEventListener('input',   ()=>{ state.tol  = parseInt(dom.tolRange.value,10); updateSettingsUI(); schedulePreviewRender(true); });
+    dom.fltRange.addEventListener('input',   ()=>{ state.filtStrength = parseInt(dom.fltRange.value,10); updateSettingsUI(); schedulePreviewRender(true); });
     function updateSettingsUI(){
-      dom.aggrRange.value = state.aggr;
-      dom.aggrVal.textContent = state.aggr;
-      dom.tolRange.value = state.tol;
-      dom.tolVal.textContent = state.tol;
-      dom.fltRange.value = state.filtStrength;
-      dom.fltVal.textContent = state.filtStrength+'%';
+      dom.aggrRange.value = state.aggr; dom.aggrVal.textContent = state.aggr;
+      dom.tolRange.value  = state.tol;  dom.tolVal.textContent  = state.tol;
+      dom.fltRange.value  = state.filtStrength; dom.fltVal.textContent = state.filtStrength+'%';
     }
 
-    // Logs panel collapsed by default; toggle button shows/hides
+    // Logs panel collapsed by default
     let logsVisible = false;
     const logsContainer = document.querySelector('.logs');
     const applyLogsVisibility = ()=>{ logsContainer.style.display = logsVisible ? 'block' : 'none'; };
@@ -1117,7 +1106,7 @@ RETAINED
     preview.init();
     initEmpty();
 
-    // -------------------------- AUTO TOOLS (Magic Wand / Smart / Ultra) --------------------------
+    // -------------------------- AUTO TOOLS --------------------------
     function magicWandMask(img, seedX, seedY, tol01, growStrength){
       const w = img.width, h = img.height;
       const maxSide = 1024;
@@ -1136,7 +1125,7 @@ RETAINED
 
       const src = sX.getImageData(0,0,sw,sh);
       const data = src.data;
-      const mask = new Uint8Array(sw*sh); // 0/1
+      const mask = new Uint8Array(sw*sh);
 
       const idx = (x,y)=> (y*sw + x);
       const pIdx = (x,y)=> idx(x,y)*4;
@@ -1160,7 +1149,7 @@ RETAINED
       }
 
       if(growStrength && growStrength>0){
-        const iters = Math.round(clamp(growStrength,0,100) * 0.08); // up to ~8
+        const iters = Math.round(clamp(growStrength,0,100) * 0.08);
         const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
         for(let k=0;k<iters;k++){
           const copy = mask.slice(0);
@@ -1188,10 +1177,7 @@ RETAINED
       const imgMask = msx.createImageData(sw, sh);
       for(let i=0;i<sw*sh;i++){
         const v = mask[i] ? 255 : 0;
-        imgMask.data[i*4+0] = 255;
-        imgMask.data[i*4+1] = 255;
-        imgMask.data[i*4+2] = 255;
-        imgMask.data[i*4+3] = v;
+        imgMask.data[i*4+0] = 255; imgMask.data[i*4+1] = 255; imgMask.data[i*4+2] = 255; imgMask.data[i*4+3] = v;
       }
       msx.putImageData(imgMask, 0, 0);
       mX.imageSmoothingEnabled = false;
@@ -1199,7 +1185,7 @@ RETAINED
       return mC;
     }
 
-    // Auto Ultra: multi-seed + local histogram / dual-threshold region growing
+    // Auto Ultra: dual-threshold with local histogram
     function ultraMask(img, seedX, seedY, tol01, aggr){
       const w = img.width, h = img.height;
       const maxSide = 1200;
@@ -1219,7 +1205,7 @@ RETAINED
       const idx = (x,y)=> (y*sw + x);
       const pIdx = (x,y)=> idx(x,y)*4;
 
-      // Build a small neighborhood histogram around seed
+      // neighborhood
       const ns = 5;
       let rSum=0,gSum=0,bSum=0,n=0;
       for(let yy=sy-ns; yy<=sy+ns; yy++){
@@ -1230,13 +1216,12 @@ RETAINED
       }
       const r0=rSum/n, g0=gSum/n, b0=bSum/n;
 
-      // Dual threshold: strict + lenient (edge expansion)
       const base = 10 + tol01*90;
       const strictThr = base;
-      const softThr   = base * (1.8 + (aggr||0)/150); // more aggr -> wider edge
+      const softThr   = base * (1.8 + (aggr||0)/150);
 
-      const mask = new Uint8Array(sw*sh); // 0/1/2 (2 means soft edge overflow)
-      const stack = [[sx,sy,1]]; // [x,y,mode] mode 1=strict, 2=soft
+      const mask = new Uint8Array(sw*sh);
+      const stack = [[sx,sy,1]];
       mask[idx(sx,sy)] = 1;
 
       const nb4 = [[1,0],[-1,0],[0,1],[0,-1]];
@@ -1252,14 +1237,12 @@ RETAINED
           const dr = data[p]-r0, dg = data[p+1]-g0, db = data[p+2]-b0;
           const dist = Math.sqrt(dr*dr + dg*dg + db*db);
           if(dist<=thr){
-            // push soft neighbors as well so region grows across mild variations
             mask[id] = dist<=strictThr ? 1 : 2;
             stack.push([nx,ny, dist<=strictThr ? 1 : 2]);
           }
         }
       }
 
-      // Convert to canvas
       const mC = document.createElement('canvas');
       mC.width = w; mC.height = h;
       const mX = mC.getContext('2d');
@@ -1270,10 +1253,7 @@ RETAINED
       const imgMask = msx.createImageData(sw, sh);
       for(let i=0;i<sw*sh;i++){
         const v = mask[i] ? 255 : 0;
-        imgMask.data[i*4+0] = 255;
-        imgMask.data[i*4+1] = 255;
-        imgMask.data[i*4+2] = 255;
-        imgMask.data[i*4+3] = v;
+        imgMask.data[i*4+0] = 255; imgMask.data[i*4+1] = 255; imgMask.data[i*4+2] = 255; imgMask.data[i*4+3] = v;
       }
       msx.putImageData(imgMask, 0, 0);
       mX.imageSmoothingEnabled = false;
@@ -1285,10 +1265,9 @@ RETAINED
       if(x<0||y<0||x>=maskCanvas.width||y>=maskCanvas.height) return false;
       const ctx = maskCanvas.getContext('2d');
       const d = ctx.getImageData(Math.floor(x), Math.floor(y), 1,1).data;
-      return d[3] > 10; // alpha present
+      return d[3] > 10;
     }
 
-    // produce an edge image (for editor overlay)
     function edgeFromMask(maskCanvas, r){
       const w = maskCanvas.width, h = maskCanvas.height;
       if(!w||!h) return null;
@@ -1338,9 +1317,8 @@ RETAINED
       return c.toDataURL('image/png');
     }
 
-    // -------------------------- ERASER HELPERS --------------------------
+    // -------------------------- ERASERS --------------------------
     function ensureBrushLayer(kind){
-      // try to use active selection if same kind, else create new on top
       const idx = state.selections.findIndex(s=>s.type === (kind==='protect'?'protect':'mask'));
       if(idx>=0){ state.activeIndex = idx; return; }
       const cnv = document.createElement('canvas');
@@ -1355,24 +1333,20 @@ RETAINED
       if(!sel || !sel.maskCanvas) return;
       const ctx = sel.maskCanvas.getContext('2d');
       const size = state.brush.size;
-      const hard = state.brush.hard; // 0..1
+      const hard = state.brush.hard;
       const radius = size/2;
 
       ctx.save();
       ctx.globalCompositeOperation = 'source-over';
-      // soft round brush: radial gradient
       const gx = ctx.createRadialGradient(x,y, radius*hard, x,y, radius);
-      const color = (sel.type==='protect') ? 'rgba(255,0,0,1)' : 'rgba(255,255,255,1)'; // visual irrelevant
+      const color = (sel.type==='protect') ? 'rgba(255,0,0,1)' : 'rgba(255,255,255,1)';
       gx.addColorStop(0, color);
       gx.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = gx;
 
       if(fresh || !lastPaint){
-        ctx.beginPath();
-        ctx.arc(x,y,radius,0,Math.PI*2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill();
       } else {
-        // interpolate stroke with discs
         const dx = x - lastPaint.x, dy = y - lastPaint.y;
         const steps = Math.max(1, Math.ceil(Math.hypot(dx,dy) / (radius*0.5)));
         for(let i=1;i<=steps;i++){
@@ -1385,34 +1359,51 @@ RETAINED
       lastPaint = {x,y};
     }
 
-    // -------------------------- MONOCLE --------------------------
-    function updateMonocle(e){
+    // -------------------------- MONOCLE (reusable) --------------------------
+    function attachMonocle(panel){
+      if(!dom.monocle) return;
+      panel.querySelector('.panel-c').appendChild(dom.monocle);
+    }
+    function updateMonocle(e, where){
       if(!state.image) return;
-      const mono = dom.monocleCanvas.getContext('2d');
-      const rect = dom.editorCanvas.getBoundingClientRect();
-      const cx = (e.clientX - rect.left - state.transform.x)/state.transform.scale;
-      const cy = (e.clientY - rect.top  - state.transform.y)/state.transform.scale;
+      const mCtx = dom.monocleCanvas.getContext('2d');
+      if(dom.monocleCanvas.width === 0 || dom.monocleCanvas.height === 0){
+        dom.monocleCanvas.width=132; dom.monocleCanvas.height=132;
+      }
 
-      const zoom = 3; // 3×
-      const box = 48; // sample radius around cursor (in image pixels)
+      let cx, cy, rect, imgToPoint;
+      if(where==='editor'){
+        rect = dom.editorCanvas.getBoundingClientRect();
+        cx = (e.clientX - rect.left - state.transform.x)/state.transform.scale;
+        cy = (e.clientY - rect.top  - state.transform.y)/state.transform.scale;
+      }else{ // preview
+        rect = dom.previewCanvas.getBoundingClientRect();
+        // map preview pixel to image pixel using scale ratios
+        const scaleX = state.image.width / dom.previewCanvas.width;
+        const scaleY = state.image.height / dom.previewCanvas.height;
+        cx = (e.clientX - rect.left) * scaleX;
+        cy = (e.clientY - rect.top ) * scaleY;
+      }
+
+      const box = 48;
       const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
       const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
 
-      const mC = dom.monocleCanvas;
-      mono.imageSmoothingEnabled = false;
-      mono.clearRect(0,0,mC.width,mC.height);
-      if(mC.width === 0 || mC.height === 0){ mC.width=140; mC.height=140; }
-      mono.drawImage(state.image, sx, sy, box, box, 0, 0, mC.width, mC.height);
+      mCtx.imageSmoothingEnabled = false;
+      mCtx.clearRect(0,0,dom.monocleCanvas.width,dom.monocleCanvas.height);
+      mCtx.drawImage(state.image, sx, sy, box, box, 0, 0, dom.monocleCanvas.width, dom.monocleCanvas.height);
 
-      // crosshair where mouse is (convert to monocle coords)
-      const fx = ((cx - sx) / box) * mC.width;
-      const fy = ((cy - sy) / box) * mC.height;
-      mono.strokeStyle = '#00e';
-      mono.lineWidth = 1;
-      mono.beginPath();
-      mono.moveTo(fx, 0); mono.lineTo(fx, mC.height);
-      mono.moveTo(0, fy); mono.lineTo(mC.width, fy);
-      mono.stroke();
+      // crosshair
+      const fx = ((cx - sx) / box) * dom.monocleCanvas.width;
+      const fy = ((cy - sy) / box) * dom.monocleCanvas.height;
+      mCtx.strokeStyle = '#0a46ff';
+      mCtx.lineWidth = 1;
+      mCtx.beginPath();
+      mCtx.moveTo(fx, 0); mCtx.lineTo(fx, dom.monocleCanvas.height);
+      mCtx.moveTo(0, fy); mCtx.lineTo(dom.monocleCanvas.width, fy);
+      mCtx.stroke();
+
+      dom.monocle.style.display = 'block';
     }
 
   })();
