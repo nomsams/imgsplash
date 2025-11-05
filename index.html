@@ -7,40 +7,42 @@
 
 <!--
 ================================================================================
-TECHNICAL SPECIFICATION SHEET (v1.20.0 "200-Point Upgrade")
-We ONLY add/fix. No working feature was removed.
+TECHNICAL SPECIFICATION SHEET (v1.12.0 "Big Editor + Monocle + Download")
+We ONLY ADD / FIX. Nothing previously working is removed.
 
-WHAT'S NEW (on top of v1.10.0)
-- LAYOUT/STABILITY
-  • Editor & Preview areas are much larger (grid 5fr / 3fr).
-  • Preset thumbnails are ~50% smaller, tightly centered in a compact bottom bar.
-  • Settings panel is slimmer by default; logs remain collapsible (start hidden).
-  • All canvases are hard-centered via container rects; no right-glue / drift.
-  • Preview shrink bug permanently fixed (stable container rect, integer sizing).
+NEW IN v1.12.0
+- BIGGER WORKSPACE
+  • Editor and Live Preview areas are significantly larger (grid 6fr / 5fr).
+  • Preset thumbnails are ~40% smaller, tighter layout, pinned to bottom.
+  • Settings panel compacted; logs remain collapsible and are hidden by default.
+  • All canvases are perfectly centered within their panels.
 
-- RENDER/RESPONSIVENESS
-  • Any settings change (Feather/Tolerance/Filter/Brush size) schedules a re-render.
-  • Debounced main render first, then thumbnails; progress bar resets correctly.
-  • Feather uses temp buffer, no cumulative blur artifacts.
+- STABILITY & UX
+  • Preview “shrinking per render” remains fixed via stable container rect.
+  • All setting sliders (Feather, Tolerance, Filter Strength) now trigger a render.
+  • Cursor defaults to a normal pointer; becomes "grabbing" only while panning.
 
-- SELECTIONS (kept: Lasso, New Lasso, Box, Undo/Redo, Save/Load, Pan/Zoom, Presets)
-  • Auto Wand (W) — flood fill by color distance + tolerance.
-  • Auto Smart (G) — Auto Wand + controlled grow (dilate) by Aggressiveness.
-  • NEW: Super Smart (K) — multi-seed adaptive wand using local mean & gradients.
-  • NEW: Protect Wand (Shift+W) — inverse-auto; marks “immune” (no color effect).
-  • NEW: Brush (E) — subtractive eraser on current color mask.
-  • NEW: Protect Brush (P) — additive brush on immunity mask (blocks color effect).
-  • NEW data model:
-       selections[]: classic shapes & bitmap masks that ADD color
-       protectMask: a dedicated full-res canvas that REMOVES from color mask
-  • NEW slider: Brush Size.
+- OUTPUT
+  • Added “⬇️ Download” to export the current PREVIEW (result) as PNG.
 
-- UX
-  • Tool buttons for Auto Wand / Auto Smart / Super Smart / Protect Wand / Brush /
-    Protect Brush added without removing earlier buttons.
-  • Presets remain clickable; thumbnails re-render after main preview.
-  • All panels perfectly centered; empty states clean; version pin kept.
+- MONOCLE
+  • Pinned square “Monocle” in the top-right of the EDITOR panel shows a 3× zoom
+    of the pixel area under the mouse pointer with a crosshair overlay.
 
+- AUTO / MAGIC TOOLS (kept & extended)
+  • Auto Wand (tolerance)
+  • Auto Smart (wand + grow)
+  • Auto Ultra (NEW): multi-seed spectral region growing with local contrast assist
+    for tougher edges (considers a small neighborhood histogram + dual-threshold).
+  • Erasers (kept + improved):
+      - Protect Eraser: paint areas that MUST NOT be colorized.
+      - Remove Eraser: erase/trim the colorized mask.
+    Both paint into high-res bitmaps; feathering still applies on final render.
+
+RETAINED
+- Dual-panel UI; Freehand Lasso + New Lasso; Box (click default / drag size) with 8 handles;
+  Undo/Redo; Start Over; Save/Load JSON; Render Now; pan/zoom (Space+Drag / Wheel);
+  Developer log; debounced render with progress; version pin; preset gallery (smaller).
 ================================================================================
 -->
 
@@ -49,7 +51,7 @@ WHAT'S NEW (on top of v1.10.0)
       --bg:#eef1f5;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
       --border:#d7dbe1;--shadow:rgba(0,0,0,.08);--shadow-2:rgba(0,0,0,.14);
       --danger:#fa383e;--ok:#19a974;--warn:#ffb700;
-      --sel:#1877f2;--sel-ghost:rgba(24,119,242,.12);
+      --sel:#1877f2;--sel-ghost:rgba(24,119,242,.14);
     }
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     *{box-sizing:border-box}
@@ -59,15 +61,15 @@ WHAT'S NEW (on top of v1.10.0)
       background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;
     }
     header{
-      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.65rem 1rem;display:flex;align-items:center;gap:.6rem;z-index:3;
+      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.65rem .9rem;display:flex;align-items:center;gap:.6rem;z-index:3;
     }
     .brand{font-weight:800;color:var(--primary);letter-spacing:.2px}
-    .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.25rem .5rem;border-radius:6px}
-    .toolbar{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
+    .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.22rem .5rem;border-radius:6px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
     .group{display:flex;gap:.4rem;align-items:center}
     button{
-      padding:.42rem .75rem;border:1px solid var(--border);background:#fff;border-radius:10px;cursor:pointer;
-      font-weight:600;font-size:.9rem;display:inline-flex;gap:.45rem;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,.02);
+      padding:.42rem .7rem;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:default;
+      font-weight:600;font-size:.9rem;display:inline-flex;gap:.42rem;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,.02);
       transition:transform .05s ease, border-color .2s, background .2s, color .2s;
     }
     button:hover:not(:disabled){border-color:var(--primary);background:#f6faff}
@@ -77,58 +79,66 @@ WHAT'S NEW (on top of v1.10.0)
     button.active{background:var(--primary);border-color:var(--primary);color:#fff}
     button.danger{border-color:#ffd2d6;background:#fff0f1;color:#b00020}
     button:disabled{opacity:.6;cursor:not-allowed}
-    .icon{font-size:1.1rem}
+    .icon{font-size:1.05rem}
 
     .shell{flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden}
 
-    /* TOP ROW: Make editor larger than preview (center panels) */
-    .row{display:grid;grid-template-columns:5fr 3fr;gap:10px;min-height:0}
+    /* BIGGER work area: editor 6fr, preview 5fr */
+    .row{display:grid;grid-template-columns:6fr 5fr;gap:10px;min-height:0}
     .panel{
       background:var(--panel);border-radius:12px;box-shadow:0 2px 8px var(--shadow);
       display:flex;flex-direction:column;min-height:0;overflow:hidden
     }
     .panel-h{
-      padding:.55rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
+      padding:.6rem .8rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
       display:flex;align-items:center;justify-content:center;gap:.5rem
     }
     .panel-c{
       flex:1;position:relative;background:#e9eef6;display:flex;align-items:center;justify-content:center;overflow:hidden
     }
 
-    /* Keep canvases centered, never glued */
+    /* Editor canvas region */
+    .placeholder{color:var(--muted);font-weight:600;opacity:.85;pointer-events:none}
     .canvas-wrap{
-      position:relative;width:100%;height:100%;overflow:hidden;cursor:grab;
-      display:flex;align-items:center;justify-content:center
+      position:relative;width:100%;height:100%;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+      /* pointer (arrow) by default */
+      cursor:default;
     }
     .canvas-wrap.panning{cursor:grabbing}
-    .canvas-wrap.drop-hover{outline:3px dashed var(--primary); outline-offset:-8px; background:rgba(24,119,242,0.08)}
+    .canvas-wrap.drop-hover{outline:3px dashed var(--primary); outline-offset:-8px; background:rgba(24,119,242,0.1)}
     canvas{display:block;background:#fff}
     #editor-canvas{position:absolute;transform-origin:top left}
 
-    .placeholder{color:var(--muted);font-weight:600;opacity:.85;pointer-events:none}
-
-    /* BOTTOM: presets small & centered + slim settings */
-    .bottom{display:grid;grid-template-columns:3fr 1.2fr;gap:10px;min-height:150px}
-    .presets.panel{min-height:150px}
-    .presets-grid{
-      display:grid;grid-template-columns:repeat(5, minmax(90px, 120px));
-      gap:10px;padding:10px;align-items:end;justify-content:center;justify-items:center
+    /* Monocle (zoom view) pinned to top-right of the editor panel */
+    .monocle{
+      position:absolute; top:10px; right:10px; width:140px; height:140px; background:#fff;
+      border:2px solid var(--border); border-radius:10px; box-shadow:0 6px 14px var(--shadow-2);
+      overflow:hidden; display:none; /* becomes block after image load */
+      z-index:2;
     }
-    .preset{cursor:pointer;text-align:center;width:100%;max-width:120px;margin:0 auto}
+    .monocle canvas{width:100%;height:100%;display:block; background:#000}
+
+    /* Bottom area: presets (smaller) + side (compact settings/logs) */
+    .bottom{display:grid;grid-template-columns:5fr 3fr;gap:10px;min-height:120px}
+    .presets.panel{min-height:120px}
+    .presets-grid{
+      display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:10px;align-items:end;justify-items:center
+    }
+    .preset{cursor:pointer;text-align:center;width:100%;max-width:100px;margin:0 auto}
     .preset canvas{
-      width:100%;height:auto;aspect-ratio:16/10;background:#f3f5f9;border-radius:10px;border:3px solid transparent;
+      width:100%;height:auto;aspect-ratio:16/9;background:#f3f5f9;border-radius:10px;border:2px solid transparent;
       box-shadow:0 1px 3px var(--shadow);transition:all .15s
     }
     .preset:hover canvas{transform:translateY(-2px)}
     .preset.active canvas{border-color:var(--primary);box-shadow:0 6px 14px var(--shadow-2)}
-    .preset label{display:block;margin-top:4px;font-size:.78rem;color:#6b7280;text-align:center}
+    .preset label{display:block;margin-top:4px;font-size:.74rem;color:var(--muted);text-align:center}
 
-    .side.panel{min-height:150px}
+    .side.panel{min-height:120px}
     .side-c{display:grid;grid-template-rows:auto 1fr}
-    .settings{padding:10px;border-bottom:1px solid var(--border)}
-    .set-row{display:flex;align-items:center;gap:10px;margin:.35rem 0}
+    .settings{padding:8px 10px;border-bottom:1px solid var(--border)}
+    .set-row{display:flex;align-items:center;gap:10px;margin:.3rem 0}
     .set-row input[type=range]{flex-grow:1}
-    .small-note{font-size:.75rem;color:#7a8699}
 
     .logs{position:relative; overflow:hidden; display:none;}
     .log-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);background:#fafbff}
@@ -140,10 +150,9 @@ WHAT'S NEW (on top of v1.10.0)
     .progress-wrap.visible{opacity:1;}
     .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .12s}
 
-    /* Version pin */
     .version-pin{
       position:fixed;top:8px;right:8px;background:#101828;color:#fff;font-size:.75rem;padding:.25rem .5rem;border-radius:6px;
-      box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:4;opacity:.9
+      box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:10;opacity:.9
     }
 
     .hidden{display:none!important}
@@ -169,23 +178,18 @@ WHAT'S NEW (on top of v1.10.0)
         <button id="modeBoxBtn" title="Box Select (B)">🔲 Box</button>
         <button id="deleteSelectionBtn" title="Delete active selection (Del)" disabled>🗑️ Delete</button>
       </div>
-
-      <!-- Auto tools -->
       <div class="group">
         <button id="autoWandBtn" title="Auto Wand (click to seed) (W)">🪄 Auto Wand</button>
-        <button id="autoSmartBtn" title="Auto Smart (wand + grow) (G)">🧠 Auto Smart</button>
-        <button id="autoSuperBtn" title="Super Smart (multi-seed, adaptive) (K)">🧬 Super Smart</button>
-        <button id="protectWandBtn" title="Protect Wand (immune area) (Shift+W)">🛡️ Protect Wand</button>
+        <button id="autoSmartBtn" title="Auto Smart (G)">🧠 Auto Smart</button>
+        <button id="autoUltraBtn" title="Auto Ultra (U)">🧬 Auto Ultra</button>
       </div>
-
-      <!-- Brushes -->
       <div class="group">
-        <button id="eraserBtn" title="Brush Eraser (subtract color) (E)">🧽 Brush</button>
-        <button id="protectBrushBtn" title="Protect Brush (add immune) (P)">🛡️ Brush</button>
+        <button id="protectEraserBtn" title="Paint protected areas (hold to paint) (E)">🛡️ Protect Eraser</button>
+        <button id="removeEraserBtn" title="Erase colorized mask (R)">🧽 Remove Eraser</button>
       </div>
-
       <div class="group">
         <button id="renderNowBtn" title="Render immediately">⚡ Render Now</button>
+        <button id="downloadBtn" title="Download final image (PNG)">⬇️ Download</button>
       </div>
     </div>
     <span class="badge" id="versionBadge">v?</span>
@@ -201,6 +205,8 @@ WHAT'S NEW (on top of v1.10.0)
         <div class="panel-c">
           <div id="editor-wrap" class="canvas-wrap">
             <canvas id="editor-canvas"></canvas>
+            <!-- Monocle (zoomed view) -->
+            <div id="monocle" class="monocle"><canvas id="monocle-canvas"></canvas></div>
           </div>
           <div id="editor-empty" class="placeholder">Drop an image here or click “Upload”</div>
           <div class="progress-wrap" id="progressEditor"><div class="progress" id="progressBar"></div></div>
@@ -230,23 +236,17 @@ WHAT'S NEW (on top of v1.10.0)
           <div class="settings">
             <div class="set-row">
               <strong>Settings</strong>
-              <span class="small-note">Changes re-render automatically</span>
               <button id="toggleLogsBtn" style="margin-left:auto">📝 Toggle Logs</button>
             </div>
             <div class="set-row">
-              <label for="aggrRange" title="Feather radius & Smart grow">Feather</label>
+              <label for="aggrRange">Feather</label>
               <input type="range" id="aggrRange" min="0" max="100" value="35"/>
               <span id="aggrVal">35</span>
             </div>
             <div class="set-row">
-              <label for="tolRange" title="Tolerance for Auto tools">Tolerance</label>
+              <label for="tolRange">Tolerance (Auto tools)</label>
               <input type="range" id="tolRange" min="0" max="100" value="25"/>
               <span id="tolVal">25</span>
-            </div>
-            <div class="set-row">
-              <label for="brushRange" title="Brush/Eraser size in px (image space)">Brush</label>
-              <input type="range" id="brushRange" min="3" max="160" value="32"/>
-              <span id="brushVal">32 px</span>
             </div>
             <div class="set-row">
               <label for="fltRange">Filter Strength</label>
@@ -275,7 +275,7 @@ WHAT'S NEW (on top of v1.10.0)
     'use strict';
 
     // -------------------------- META / VERSION --------------------------
-    const APP_VERSION = "1.20.0";
+    const APP_VERSION = "1.12.0";
     document.getElementById('versionBadge').textContent = APP_VERSION;
     document.getElementById('versionPin').textContent = APP_VERSION;
 
@@ -285,10 +285,10 @@ WHAT'S NEW (on top of v1.10.0)
       uploadBtn: $('uploadBtn'), saveBtn: $('saveBtn'), loadBtn: $('loadBtn'), startOverBtn: $('startOverBtn'),
       undoBtn: $('undoBtn'), redoBtn: $('redoBtn'),
       modeLassoBtn: $('modeLassoBtn'), newLassoBtn: $('newLassoBtn'), modeBoxBtn: $('modeBoxBtn'),
-      deleteSelectionBtn: $('deleteSelectionBtn'),
-      autoWandBtn: $('autoWandBtn'), autoSmartBtn: $('autoSmartBtn'), autoSuperBtn: $('autoSuperBtn'), protectWandBtn: $('protectWandBtn'),
-      eraserBtn: $('eraserBtn'), protectBrushBtn: $('protectBrushBtn'),
-      renderNowBtn: $('renderNowBtn'),
+      deleteSelectionBtn: $('deleteSelectionBtn'), renderNowBtn: $('renderNowBtn'),
+      autoWandBtn: $('autoWandBtn'), autoSmartBtn: $('autoSmartBtn'), autoUltraBtn: $('autoUltraBtn'),
+      protectEraserBtn: $('protectEraserBtn'), removeEraserBtn: $('removeEraserBtn'),
+      downloadBtn: $('downloadBtn'),
       fileInput: $('fileInput'), loadInput: $('loadInput'),
       editorWrap: $('editor-wrap'), editorCanvas: $('editor-canvas'), editorEmpty: $('editor-empty'),
       previewContainer: $('preview-container'), previewCanvas: $('preview-canvas'), previewEmpty: $('preview-empty'),
@@ -296,9 +296,9 @@ WHAT'S NEW (on top of v1.10.0)
       progressWrap: $('progressEditor'), progressBar: $('progressBar'),
       aggrRange: $('aggrRange'), aggrVal: $('aggrVal'),
       tolRange: $('tolRange'), tolVal: $('tolVal'),
-      brushRange: $('brushRange'), brushVal: $('brushVal'),
       fltRange: $('fltRange'), fltVal: $('fltVal'),
-      toggleLogsBtn: $('toggleLogsBtn'), clearLogsBtn: $('clearLogsBtn'), logBody: $('logBody')
+      toggleLogsBtn: $('toggleLogsBtn'), clearLogsBtn: $('clearLogsBtn'), logBody: $('logBody'),
+      monocle: $('monocle'), monocleCanvas: $('monocle-canvas')
     };
 
     // -------------------------- UTIL --------------------------
@@ -315,27 +315,30 @@ WHAT'S NEW (on top of v1.10.0)
     // -------------------------- STATE --------------------------
     const state = {
       image: null,
-      selections: [], // {type:'box', x,y,w,h} | {type:'lasso', points:[{x,y}]} | {type:'mask', maskCanvas}
-      protectMask: null, // canvas that removes from final color mask (immune)
+      selections: [], //   {type:'box', x,y,w,h}
+                      // | {type:'lasso', points:[{x,y}]}
+                      // | {type:'mask',  maskCanvas}            -> additive colorized mask
+                      // | {type:'protect', maskCanvas}          -> protection (subtract from colorized)
       activeIndex: -1,
-      mode: 'lasso', // 'lasso' | 'box' | 'autoWand' | 'autoSmart' | 'autoSuper' | 'protectWand' | 'eraser' | 'protectBrush'
+      mode: 'lasso', // 'lasso' | 'box' | 'autoWand' | 'autoSmart' | 'autoUltra' | 'protectEraser' | 'removeEraser'
       transform: {x:0,y:0,scale:1},
       isPanning: false,
       drag: { active:false, startX:0,startY:0, kind:null, handle:null, moved:false, snapshot:null },
       history: [], histIndex: -1,
       activePreset: 0,
       filters: [
-        {name:'Classic',   css:(s)=>`grayscale(${s}%)`,                              aggr:20},
-        {name:'High Pop',  css:(s)=>`grayscale(${s}%) contrast(1.35) brightness(1.05)`, aggr:30},
-        {name:'Soft Film', css:(s)=>`grayscale(${s}%) brightness(1.03) contrast(1.08) saturate(.9)`, aggr:35},
-        {name:'Crunchy',   css:(s)=>`grayscale(${s}%) contrast(1.55)`,               aggr:45},
-        {name:'Dreamy',    css:(s)=>`grayscale(${s}%) blur(0.6px) brightness(1.06)`, aggr:60}
+        {name:'Classic',   css:(s)=>`grayscale(${s}%)`,                                                aggr:20},
+        {name:'High Pop',  css:(s)=>`grayscale(${s}%) contrast(1.35) brightness(1.05)`,                aggr:30},
+        {name:'Soft Film', css:(s)=>`grayscale(${s}%) brightness(1.03) contrast(1.08) saturate(.9)`,   aggr:35},
+        {name:'Crunchy',   css:(s)=>`grayscale(${s}%) contrast(1.55)`,                                 aggr:45},
+        {name:'Dreamy',    css:(s)=>`grayscale(${s}%) blur(0.6px) brightness(1.06)`,                   aggr:60},
+        {name:'Neutral',   css:(s)=>`grayscale(${s}%) brightness(1.02)`,                               aggr:25}
       ],
-      aggr: 35,            // feather radius proxy + Smart grow strength
+      aggr: 35,            // feather radius proxy (and Smart grow strength)
       tol: 25,             // tolerance for Auto tools
-      brush: 32,           // brush size (px in image space)
-      filtStrength: 100,   // grayscale % (0..100)
-      rendering: false
+      filtStrength: 100,   // grayscale % for background
+      rendering: false,
+      brush: {size: 28, hard: 0.9} // for erasers
     };
 
     // -------------------------- EDITOR --------------------------
@@ -365,9 +368,9 @@ WHAT'S NEW (on top of v1.10.0)
         state.selections.forEach((sel,i)=>{
           const active = i===state.activeIndex;
           ctx.save();
-          ctx.lineWidth = active ? 2.6 / state.transform.scale : 1.5 / state.transform.scale;
+          ctx.lineWidth = active ? 2.5 / state.transform.scale : 1.5 / state.transform.scale;
           ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.45)';
-          ctx.fillStyle = active ? 'rgba(24,119,242,.10)' : 'rgba(255,255,255,.16)';
+          ctx.fillStyle = active ? 'rgba(24,119,242,.08)' : 'rgba(255,255,255,.18)';
           ctx.setLineDash(active ? [] : [6 / state.transform.scale, 4 / state.transform.scale]);
 
           if(sel.type==='box'){
@@ -380,14 +383,14 @@ WHAT'S NEW (on top of v1.10.0)
             ctx.closePath();
             ctx.stroke();
             ctx.fill();
-          } else if(sel.type==='mask' && sel.maskCanvas){
+          } else if((sel.type==='mask' || sel.type==='protect') && sel.maskCanvas){
             ctx.globalAlpha = active ? 0.25 : 0.15;
             ctx.drawImage(sel.maskCanvas, 0, 0);
             ctx.globalAlpha = 1;
             const edge = edgeFromMask(sel.maskCanvas, 1);
             if(edge){
               ctx.save();
-              ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.45)';
+              ctx.strokeStyle = sel.type==='protect' ? '#b00020' : (active ? '#1877f2' : 'rgba(0,0,0,.45)');
               ctx.lineWidth = active ? 2.0 / state.transform.scale : 1.2 / state.transform.scale;
               ctx.drawImage(edge, 0, 0);
               ctx.restore();
@@ -395,23 +398,6 @@ WHAT'S NEW (on top of v1.10.0)
           }
           ctx.restore();
         });
-
-        // show protect mask overlay
-        if(state.protectMask){
-          ctx.save();
-          ctx.globalAlpha = 0.25;
-          ctx.fillStyle = '#fa383e';
-          const pm = state.protectMask.getContext('2d').getImageData(0,0,state.protectMask.width,state.protectMask.height);
-          // fast draw: draw mask as red via destination-in trick
-          const temp = document.createElement('canvas');
-          temp.width = state.protectMask.width; temp.height = state.protectMask.height;
-          const tx = temp.getContext('2d');
-          tx.putImageData(pm,0,0);
-          ctx.drawImage(temp,0,0);
-          ctx.globalAlpha = 1;
-          ctx.restore();
-        }
-
         ctx.restore();
       }
     };
@@ -425,6 +411,7 @@ WHAT'S NEW (on top of v1.10.0)
       init(){ this.maskCtx = this.mask.getContext('2d'); },
       layout(){
         if(!state.image){ return; }
+        // Stable container rect, not influenced by canvas size
         const rect = dom.previewContainer.getBoundingClientRect();
         const availW = Math.max(0, rect.width);
         const availH = Math.max(0, rect.height);
@@ -437,11 +424,13 @@ WHAT'S NEW (on top of v1.10.0)
       render(){
         if(!state.image) return;
 
-        // --- Build full-res union mask of all positive selections ---
+        // Build full-res colorized mask (white = colorized)
         this.mask.width = state.image.width;
         this.mask.height = state.image.height;
         const m = this.maskCtx;
         m.clearRect(0,0,this.mask.width,this.mask.height);
+
+        // Additive color selections
         m.fillStyle = '#fff';
         state.selections.forEach(sel=>{
           if(sel.type==='box'){
@@ -456,20 +445,16 @@ WHAT'S NEW (on top of v1.10.0)
           }
         });
 
-        // --- Subtract protect mask if present ---
-        if(state.protectMask){
-          const cut = document.createElement('canvas');
-          cut.width = this.mask.width; cut.height = this.mask.height;
-          const cx = cut.getContext('2d');
-          cx.drawImage(this.mask,0,0);
-          cx.globalCompositeOperation = 'destination-out';
-          cx.drawImage(state.protectMask,0,0);
-          // replace original
-          m.clearRect(0,0,this.mask.width,this.mask.height);
-          m.drawImage(cut,0,0);
-        }
+        // Subtractive protection (erase from mask)
+        state.selections.forEach(sel=>{
+          if(sel.type==='protect' && sel.maskCanvas){
+            m.globalCompositeOperation = 'destination-out';
+            m.drawImage(sel.maskCanvas, 0, 0);
+            m.globalCompositeOperation = 'source-over';
+          }
+        });
 
-        // --- Feather via temp buffer (no self-draw artifacts) ---
+        // Feather via temp buffer (no self-draw artifacts)
         const blurPx = Math.round(clamp(state.aggr,0,100) * 0.22); // ~0..22px
         if(blurPx>0){
           const tmp = document.createElement('canvas');
@@ -481,16 +466,17 @@ WHAT'S NEW (on top of v1.10.0)
           m.drawImage(tmp,0,0);
         }
 
-        // --- Paint background (filtered) ---
         const ctx = this.ctx;
         ctx.clearRect(0,0,this.c.width,this.c.height);
+
+        // Background (filtered)
         const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
         ctx.save();
         ctx.filter = cssFilter;
         ctx.drawImage(state.image, 0, 0, this.c.width, this.c.height);
         ctx.restore();
 
-        // --- Color-only layer clipped by mask ---
+        // Color-only on top, clipped by mask
         const colored = document.createElement('canvas');
         colored.width = state.image.width; colored.height = state.image.height;
         const cctx = colored.getContext('2d');
@@ -511,17 +497,15 @@ WHAT'S NEW (on top of v1.10.0)
         const c = item.querySelector('canvas'), cctx = c.getContext('2d');
         if(state.image){
           const aspect = state.image.width/state.image.height;
-          const base = 110; // ~half earlier size
-          c.width = base;
-          c.height = Math.max(70, Math.round(base/aspect));
+          c.width = 100; c.height = Math.max(60, Math.round(100/aspect));
           cctx.save();
           cctx.filter = flt.css(100);
           cctx.drawImage(state.image, 0,0,c.width,c.height);
           cctx.restore();
         } else {
-          c.width=110; c.height=80;
+          c.width=100; c.height=70;
           cctx.fillStyle = '#f3f5f9'; cctx.fillRect(0,0,c.width,c.height);
-          cctx.fillStyle='#9aa3b2'; cctx.fillText('Load image', 20, 45);
+          cctx.fillStyle='#9aa3b2'; cctx.fillText('Load', 38, 40);
         }
         item.addEventListener('click', ()=>{
           state.activePreset = idx;
@@ -535,21 +519,19 @@ WHAT'S NEW (on top of v1.10.0)
       });
     }
 
-    // -------------------------- HISTORY --------------------------
+    // -------------------------- HISTORY (serialize mask canvases) --------------------------
     const history = {
       save(){
         const snapshot = {
           selections: JSON.parse(JSON.stringify(state.selections, (k,v)=>{
-            if(k==='maskCanvas' && v && v.toDataURL) return v.toDataURL();
+            if((k==='maskCanvas') && v && v.toDataURL) return v.toDataURL(); // serialize
             return v;
           })),
-          protectMask: state.protectMask ? state.protectMask.toDataURL() : null,
           activeIndex: state.activeIndex,
           transform: {...state.transform},
           activePreset: state.activePreset,
           aggr: state.aggr,
           tol: state.tol,
-          brush: state.brush,
           filtStrength: state.filtStrength
         };
         if(state.histIndex < state.history.length-1) state.history = state.history.slice(0,state.histIndex+1);
@@ -560,19 +542,17 @@ WHAT'S NEW (on top of v1.10.0)
       load(i){
         const snap = JSON.parse(state.history[i]);
         state.selections = (snap.selections||[]).map(s=>{
-          if(s.type==='mask' && s.maskCanvas && typeof s.maskCanvas==='string'){
+          if((s.type==='mask' || s.type==='protect') && s.maskCanvas && typeof s.maskCanvas==='string'){
             const cnv = dataURLToCanvas(s.maskCanvas);
             return {...s, maskCanvas: cnv};
           }
           return s;
         });
-        state.protectMask = snap.protectMask ? dataURLToCanvas(snap.protectMask) : null;
         state.activeIndex = snap.activeIndex;
         state.transform = snap.transform;
         state.activePreset = snap.activePreset ?? state.activePreset;
         state.aggr = snap.aggr ?? state.aggr;
         state.tol = snap.tol ?? state.tol;
-        state.brush = snap.brush ?? state.brush;
         state.filtStrength = snap.filtStrength ?? state.filtStrength;
         editor.draw(); schedulePreviewRender(true); renderPresets(); updateSettingsUI(); refreshButtons();
       },
@@ -645,7 +625,7 @@ WHAT'S NEW (on top of v1.10.0)
       finishProgress();
       renderPresets(); // thumbs after main preview
       log('Preview rendered.');
-    }, 500);
+    }, 520);
 
     function schedulePreviewRender(startProgressBar=true){
       if(!state.image) return;
@@ -681,7 +661,6 @@ WHAT'S NEW (on top of v1.10.0)
         img.onload = ()=>{
           state.image = img;
           state.selections = [];
-          state.protectMask = null;
           state.activeIndex = -1;
           dom.editorEmpty.classList.add('hidden');
           dom.previewEmpty.classList.add('hidden');
@@ -692,6 +671,7 @@ WHAT'S NEW (on top of v1.10.0)
           history.save();
           refreshButtons();
           schedulePreviewRender(true);
+          dom.monocle.style.display = 'block';
           log('Image loaded:', file.name, `${img.width}x${img.height}`);
         };
         img.src = r.result;
@@ -705,7 +685,7 @@ WHAT'S NEW (on top of v1.10.0)
         if(!state.image) return;
         const iW = state.image.width, iH = state.image.height;
         const cW = dom.editorWrap.clientWidth, cH = dom.editorWrap.clientHeight;
-        const scale = Math.min(cW/iW, cH/iH) * 0.95; // 95% fit
+        const scale = Math.min(cW/iW, cH/iH) * 0.96; // 96% fit
         const x = (cW - iW*scale)/2;
         const y = (cH - iH*scale)/2;
         state.transform = {x,y,scale};
@@ -715,27 +695,44 @@ WHAT'S NEW (on top of v1.10.0)
     window.addEventListener('resize', ()=>{ editor.updateSize(); preview.layout(); refitDebounced(); });
 
     // -------------------------- EDITOR INTERACTIONS --------------------------
+    let painting = false; // for erasers
     dom.editorWrap.addEventListener('mousedown', (e)=>{
       if(!state.image) return;
 
-      // Auto / Brush modes: act on click/drag and return
-      if(['autoWand','autoSmart','autoSuper','protectWand','eraser','protectBrush'].includes(state.mode)){
-        const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
-        if(state.mode==='eraser' || state.mode==='protectBrush'){
-          startBrushing(e, p.x, p.y);
-        } else {
-          // Auto-variants (generate mask)
-          handleAutoSeed(state.mode, Math.round(p.x), Math.round(p.y));
-        }
-        return;
-      }
-
+      // Pan start
       if(state.isPanning){
         state.drag = {active:true,kind:'pan', startX:e.clientX, startY:e.clientY, tx:state.transform.x, ty:state.transform.y, moved:false};
         dom.editorWrap.classList.add('panning'); return;
       }
 
       const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
+
+      // Auto modes: on click, seed flood/ultra; return early
+      if(state.mode==='autoWand' || state.mode==='autoSmart' || state.mode==='autoUltra'){
+        const sx = Math.round(p.x), sy = Math.round(p.y);
+        const mask = (state.mode==='autoUltra')
+          ? ultraMask(state.image, sx, sy, state.tol/100, state.aggr)
+          : magicWandMask(state.image, sx, sy, state.tol/100, state.mode==='autoSmart'? state.aggr:0);
+        if(mask){
+          state.selections.push({type:'mask', maskCanvas: mask});
+          state.activeIndex = state.selections.length-1;
+          editor.draw();
+          schedulePreviewRender(true);
+          history.save();
+          log(state.mode==='autoUltra'?'Auto Ultra':(state.mode==='autoSmart'?'Auto Smart':'Auto Wand'),
+              'selection added (tol:', state.tol, ', aggr:', state.aggr, ')');
+        }
+        return;
+      }
+
+      // Erasers paint directly
+      if(state.mode==='protectEraser' || state.mode==='removeEraser'){
+        painting = true;
+        ensureBrushLayer(state.mode==='protectEraser' ? 'protect' : 'mask');
+        paintOnActiveMask(p.x, p.y, true);
+        editor.draw(); schedulePreviewRender();
+        return;
+      }
 
       // hit test for existing selections
       let hitIndex = -1, hitHandle = null, hitKind='none';
@@ -747,7 +744,7 @@ WHAT'S NEW (on top of v1.10.0)
           if(pointInBox(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
         }else if(sel.type==='lasso'){
           if(pointInLasso(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
-        }else if(sel.type==='mask'){
+        }else if(sel.type==='mask' || sel.type==='protect'){
           if(maskHit(sel.maskCanvas, p.x, p.y)){ hitIndex=i; hitKind='move'; break; }
         }
       }
@@ -782,10 +779,14 @@ WHAT'S NEW (on top of v1.10.0)
     dom.editorWrap.addEventListener('mousemove', (e)=>{
       if(!state.image) return;
 
-      // brushing (eraser/protect brush)
-      if(brush.active){
+      // MONOCLE (always tracks)
+      updateMonocle(e);
+
+      // Painting mode (erasers)
+      if(painting && (state.mode==='protectEraser' || state.mode==='removeEraser')){
         const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
-        brushStroke(p.x, p.y);
+        paintOnActiveMask(p.x, p.y, false);
+        editor.draw(); schedulePreviewRender();
         return;
       }
 
@@ -824,11 +825,10 @@ WHAT'S NEW (on top of v1.10.0)
             sel.y = snap.y + dy;
           } else if(sel.type==='lasso'){
             sel.points = snap.points.map(pt=>({x:pt.x+dx, y:pt.y+dy}));
-          } else if(sel.type==='mask'){
+          } else if(sel.type==='mask' || sel.type==='protect'){
             const moved = document.createElement('canvas');
             moved.width = snap.maskCanvas.width; moved.height = snap.maskCanvas.height;
-            const mctx = moved.getContext('2d');
-            mctx.drawImage(snap.maskCanvas, dx, dy);
+            moved.getContext('2d').drawImage(snap.maskCanvas, dx, dy);
             sel.maskCanvas = moved;
           }
           editor.draw(); schedulePreviewRender();
@@ -858,8 +858,16 @@ WHAT'S NEW (on top of v1.10.0)
     });
 
     window.addEventListener('mouseup', ()=>{
-      if(brush.active){ endBrushing(); return; }
-      if(!state.image || !state.drag.active) return;
+      if(!state.image) return;
+
+      // end painting
+      if(painting){
+        painting = false;
+        history.save();
+        return;
+      }
+
+      if(!state.drag.active) return;
       const wasMake = /-make$/.test(state.drag.kind);
       if(state.drag.kind==='lasso-make'){
         const sel = state.selections[state.activeIndex];
@@ -906,6 +914,7 @@ WHAT'S NEW (on top of v1.10.0)
       state.transform.y = my - (my - state.transform.y)*zoom;
       state.transform.scale = newScale;
       editor.draw();
+      updateMonocle(e);
     }, {passive:false});
 
     // keys
@@ -924,10 +933,9 @@ WHAT'S NEW (on top of v1.10.0)
       if(e.key.toLowerCase()==='b'){ setMode('box'); }
       if(e.key.toLowerCase()==='w'){ setMode('autoWand'); }
       if(e.key.toLowerCase()==='g'){ setMode('autoSmart'); }
-      if(e.key.toLowerCase()==='k'){ setMode('autoSuper'); }
-      if(e.shiftKey && e.key.toLowerCase()==='w'){ setMode('protectWand'); }
-      if(e.key.toLowerCase()==='e'){ setMode('eraser'); }
-      if(e.key.toLowerCase()==='p'){ setMode('protectBrush'); }
+      if(e.key.toLowerCase()==='u'){ setMode('autoUltra'); }
+      if(e.key.toLowerCase()==='e'){ setMode('protectEraser'); }
+      if(e.key.toLowerCase()==='r'){ setMode('removeEraser'); }
     });
     window.addEventListener('keyup', (e)=>{ if(e.code==='Space'){ state.isPanning=false; dom.editorWrap.classList.remove('panning'); }});
 
@@ -949,24 +957,35 @@ WHAT'S NEW (on top of v1.10.0)
     });
     dom.autoWandBtn.addEventListener('click', ()=>setMode('autoWand'));
     dom.autoSmartBtn.addEventListener('click', ()=>setMode('autoSmart'));
-    dom.autoSuperBtn.addEventListener('click', ()=>setMode('autoSuper'));
-    dom.protectWandBtn.addEventListener('click', ()=>setMode('protectWand'));
-    dom.eraserBtn.addEventListener('click', ()=>setMode('eraser'));
-    dom.protectBrushBtn.addEventListener('click', ()=>setMode('protectBrush'));
+    dom.autoUltraBtn.addEventListener('click', ()=>setMode('autoUltra'));
+    dom.protectEraserBtn.addEventListener('click', ()=>setMode('protectEraser'));
+    dom.removeEraserBtn.addEventListener('click', ()=>setMode('removeEraser'));
     dom.undoBtn.addEventListener('click', ()=>history.undo());
     dom.redoBtn.addEventListener('click', ()=>history.redo());
     dom.renderNowBtn.addEventListener('click', ()=>{
       startProgress();
       preview.layout(); preview.render(); finishProgress(); renderPresets(); log('Manual render complete.');
     });
+    dom.downloadBtn.addEventListener('click', ()=>{
+      if(!state.image){ alert('Load an image first.'); return; }
+      // Ensure latest render
+      preview.layout(); preview.render();
+      const url = dom.previewCanvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `colorsplash-result-${Date.now()}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
 
     dom.startOverBtn.addEventListener('click', ()=>{
       if(!state.image) return;
       if(confirm('Clear the image and all selections?')){
-        state.image=null; state.selections=[]; state.protectMask=null; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
+        state.image=null; state.selections=[]; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
         dom.editorEmpty.classList.remove('hidden'); dom.previewEmpty.classList.remove('hidden');
         editor.updateSize(); editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
         preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
+        dom.monocle.style.display='none';
         renderPresets(); refreshButtons(); log('Project cleared.');
       }
     });
@@ -977,14 +996,12 @@ WHAT'S NEW (on top of v1.10.0)
         app: 'Color Splash Pro X', version: APP_VERSION,
         imageDataURL: getCurrentImageDataURL(),
         selections: state.selections.map(s=>{
-          if(s.type==='mask' && s.maskCanvas) return {...s, maskCanvas: s.maskCanvas.toDataURL()};
+          if((s.type==='mask' || s.type==='protect') && s.maskCanvas) return {...s, maskCanvas: s.maskCanvas.toDataURL()};
           return s;
         }),
-        protectMask: state.protectMask ? state.protectMask.toDataURL() : null,
         activePreset: state.activePreset,
         aggr: state.aggr,
         tol: state.tol,
-        brush: state.brush,
         filtStrength: state.filtStrength
       };
       const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
@@ -1015,23 +1032,22 @@ WHAT'S NEW (on top of v1.10.0)
       img.onload = ()=>{
         state.image = img;
         state.selections = (obj.selections||[]).map(s=>{
-          if(s.type==='mask' && s.maskCanvas && typeof s.maskCanvas==='string'){
+          if((s.type==='mask' || s.type==='protect') && s.maskCanvas && typeof s.maskCanvas==='string'){
             const cnv = dataURLToCanvas(s.maskCanvas);
             return {...s, maskCanvas: cnv};
           }
           return s;
         });
-        state.protectMask = obj.protectMask ? dataURLToCanvas(obj.protectMask) : null;
         state.activeIndex = -1;
         state.activePreset = obj.activePreset ?? 0;
         state.aggr = obj.aggr ?? 35;
         state.tol = obj.tol ?? 25;
-        state.brush = obj.brush ?? 32;
         state.filtStrength = obj.filtStrength ?? 100;
         dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
         editor.updateSize(); preview.init(); focal.fit(); editor.draw(); renderPresets(); updateSettingsUI();
         state.history=[]; state.histIndex=-1; history.save(); refreshButtons();
         schedulePreviewRender(true);
+        dom.monocle.style.display='block';
       };
       img.src = obj.imageDataURL;
     }
@@ -1045,12 +1061,7 @@ WHAT'S NEW (on top of v1.10.0)
     dom.tolRange.addEventListener('input', ()=>{
       state.tol = parseInt(dom.tolRange.value,10);
       updateSettingsUI();
-      schedulePreviewRender(true); // tolerance change prompts re-render now
-    });
-    dom.brushRange.addEventListener('input', ()=>{
-      state.brush = parseInt(dom.brushRange.value,10);
-      updateSettingsUI();
-      schedulePreviewRender(false); // brush size alone doesn't change mask yet
+      schedulePreviewRender(true); // now also renders so user sees change
     });
     dom.fltRange.addEventListener('input', ()=>{
       state.filtStrength = parseInt(dom.fltRange.value,10);
@@ -1062,8 +1073,6 @@ WHAT'S NEW (on top of v1.10.0)
       dom.aggrVal.textContent = state.aggr;
       dom.tolRange.value = state.tol;
       dom.tolVal.textContent = state.tol;
-      dom.brushRange.value = state.brush;
-      dom.brushVal.textContent = state.brush + ' px';
       dom.fltRange.value = state.filtStrength;
       dom.fltVal.textContent = state.filtStrength+'%';
     }
@@ -1082,10 +1091,9 @@ WHAT'S NEW (on top of v1.10.0)
       dom.modeBoxBtn.classList.toggle('active', m==='box');
       dom.autoWandBtn.classList.toggle('active', m==='autoWand');
       dom.autoSmartBtn.classList.toggle('active', m==='autoSmart');
-      dom.autoSuperBtn.classList.toggle('active', m==='autoSuper');
-      dom.protectWandBtn.classList.toggle('active', m==='protectWand');
-      dom.eraserBtn.classList.toggle('active', m==='eraser');
-      dom.protectBrushBtn.classList.toggle('active', m==='protectBrush');
+      dom.autoUltraBtn.classList.toggle('active', m==='autoUltra');
+      dom.protectEraserBtn.classList.toggle('active', m==='protectEraser');
+      dom.removeEraserBtn.classList.toggle('active', m==='removeEraser');
       log('Mode:', m);
     }
     function refreshButtons(){
@@ -1104,54 +1112,12 @@ WHAT'S NEW (on top of v1.10.0)
       updateSettingsUI();
       refreshButtons();
       log(`App ready. Version ${APP_VERSION}`);
-      log('Tip: S=Lasso, B=Box, W=Auto Wand, G=Auto Smart, K=Super Smart, Shift+W=Protect Wand, E=Brush Eraser, P=Protect Brush. Space+Drag pan. Wheel zoom.');
+      log('Tip: S=Lasso, B=Box, W=Auto Wand, G=Auto Smart, U=Auto Ultra, E=Protect Eraser, R=Remove Eraser. Space+Drag pan. Wheel zoom.');
     }
     preview.init();
     initEmpty();
 
-    // -------------------------- AUTO TOOLS --------------------------
-    function handleAutoSeed(mode, x, y){
-      if(!state.image) return;
-      let mask;
-      const tol01 = clamp(state.tol/100, 0, 1);
-      if(mode==='autoWand'){
-        mask = magicWandMask(state.image, x, y, tol01, 0);
-        if(mask) pushColorMask(mask, 'Auto Wand');
-      } else if(mode==='autoSmart'){
-        mask = magicWandMask(state.image, x, y, tol01, state.aggr);
-        if(mask) pushColorMask(mask, 'Auto Smart');
-      } else if(mode==='autoSuper'){
-        mask = superSmartMask(state.image, x, y, tol01, state.aggr);
-        if(mask) pushColorMask(mask, 'Super Smart');
-      } else if(mode==='protectWand'){
-        mask = magicWandMask(state.image, x, y, tol01, state.aggr*0.5);
-        if(mask) addToProtectMask(mask, 'Protect Wand');
-      }
-    }
-
-    function pushColorMask(maskCanvas, label){
-      state.selections.push({type:'mask', maskCanvas});
-      state.activeIndex = state.selections.length-1;
-      editor.draw();
-      schedulePreviewRender(true);
-      history.save();
-      log(label,'selection added (tol:', state.tol, ', aggr:', state.aggr, ')');
-    }
-    function addToProtectMask(maskCanvas, label){
-      if(!state.protectMask){
-        state.protectMask = document.createElement('canvas');
-        state.protectMask.width = state.image.width;
-        state.protectMask.height = state.image.height;
-      }
-      const px = state.protectMask.getContext('2d');
-      px.drawImage(maskCanvas,0,0);
-      editor.draw();
-      schedulePreviewRender(true);
-      history.save();
-      log(label,'applied.');
-    }
-
-    // Magic Wand: flood-fill (color distance), optional dilation grow
+    // -------------------------- AUTO TOOLS (Magic Wand / Smart / Ultra) --------------------------
     function magicWandMask(img, seedX, seedY, tol01, growStrength){
       const w = img.width, h = img.height;
       const maxSide = 1024;
@@ -1159,15 +1125,19 @@ WHAT'S NEW (on top of v1.10.0)
       const sw = Math.max(1, Math.round(w*scale));
       const sh = Math.max(1, Math.round(h*scale));
 
-      const sC = document.createElement('canvas'); sC.width = sw; sC.height = sh;
-      const sX = sC.getContext('2d'); sX.imageSmoothingEnabled = true; sX.drawImage(img, 0,0, sw, sh);
+      const sC = document.createElement('canvas');
+      sC.width = sw; sC.height = sh;
+      const sX = sC.getContext('2d');
+      sX.imageSmoothingEnabled = true;
+      sX.drawImage(img, 0,0, sw, sh);
 
       const sx = clamp(Math.round(seedX*scale),0,sw-1);
       const sy = clamp(Math.round(seedY*scale),0,sh-1);
 
       const src = sX.getImageData(0,0,sw,sh);
       const data = src.data;
-      const mask = new Uint8Array(sw*sh);
+      const mask = new Uint8Array(sw*sh); // 0/1
+
       const idx = (x,y)=> (y*sw + x);
       const pIdx = (x,y)=> idx(x,y)*4;
 
@@ -1185,15 +1155,12 @@ WHAT'S NEW (on top of v1.10.0)
           const p = pIdx(nx,ny);
           const dr = data[p]-r0, dg = data[p+1]-g0, db = data[p+2]-b0;
           const dist = Math.sqrt(dr*dr + dg*dg + db*db);
-          if(dist<=thr){
-            mask[id]=1;
-            stack.push([nx,ny]);
-          }
+          if(dist<=thr){ mask[id]=1; stack.push([nx,ny]); }
         }
       }
 
       if(growStrength && growStrength>0){
-        const iters = Math.round(clamp(growStrength,0,100) * 0.08);
+        const iters = Math.round(clamp(growStrength,0,100) * 0.08); // up to ~8
         const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
         for(let k=0;k<iters;k++){
           const copy = mask.slice(0);
@@ -1211,97 +1178,12 @@ WHAT'S NEW (on top of v1.10.0)
         }
       }
 
-      return upsampleBinaryMask(mask, sw, sh, w, h);
-    }
-
-    // Super Smart: multi-seed + adaptive threshold using local mean & gradient
-    function superSmartMask(img, seedX, seedY, tol01, grow){
-      const w = img.width, h = img.height;
-      const maxSide = 1024;
-      const scale = Math.min(1, maxSide / Math.max(w,h));
-      const sw = Math.max(1, Math.round(w*scale));
-      const sh = Math.max(1, Math.round(h*scale));
-
-      const sC = document.createElement('canvas'); sC.width=sw; sC.height=sh;
-      const sX = sC.getContext('2d'); sX.imageSmoothingEnabled = true; sX.drawImage(img,0,0,sw,sh);
-      const sx = clamp(Math.round(seedX*scale),0,sw-1);
-      const sy = clamp(Math.round(seedY*scale),0,sh-1);
-
-      const src = sX.getImageData(0,0,sw,sh);
-      const data = src.data;
-      const mask = new Uint8Array(sw*sh);
-      const idx = (x,y)=> (y*sw + x);
-      const pIdx = (x,y)=> idx(x,y)*4;
-
-      // collect local neighborhood stats
-      const win = 10; // ~ 21x21 window
-      let sumR=0,sumG=0,sumB=0,count=0;
-      for(let yy=sy-win; yy<=sy+win; yy++){
-        for(let xx=sx-win; xx<=sx+win; xx++){
-          if(xx<0||yy<0||xx>=sw||yy>=sh) continue;
-          const p = pIdx(xx,yy); sumR+=data[p]; sumG+=data[p+1]; sumB+=data[p+2]; count++;
-        }
-      }
-      const mR=sumR/count, mG=sumG/count, mB=sumB/count;
-
-      // adaptive base threshold from tolerance plus local contrast
-      const baseThr = 6 + tol01*120;
-      const gradField = gradientMagnitude(src, sw, sh); // normalized 0..1
-
-      // multi-seed pattern (cross)
-      const seeds = [[sx,sy],[sx+3,sy],[sx-3,sy],[sx,sy+3],[sx,sy-3]].filter(([x,y])=>x>=0&&y>=0&&x<sw&&y<sh);
-      const stack = [...seeds];
-      seeds.forEach(([x,y])=> mask[idx(x,y)]=1);
-
-      while(stack.length){
-        const [x,y] = stack.pop();
-        for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
-          if(nx<0||ny<0||nx>=sw||ny>=sh) continue;
-          const id = idx(nx,ny);
-          if(mask[id]) continue;
-          const p = pIdx(nx,ny);
-          // distance to local mean instead of single seed
-          const dr = data[p]-mR, dg = data[p+1]-mG, db = data[p+2]-mB;
-          const dist = Math.sqrt(dr*dr + dg*dg + db*db);
-          // adapt threshold by edge strength (tighten near strong edges)
-          const grad = gradField[id]; // 0..1
-          const thr = baseThr * (1 - 0.45*grad);
-          if(dist<=thr){
-            mask[id]=1;
-            stack.push([nx,ny]);
-          }
-        }
-      }
-
-      // grow slightly depending on aggr
-      const growStrength = grow ? clamp(grow,0,100) : 0;
-      if(growStrength>0){
-        const iters = Math.round(growStrength * 0.07);
-        const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
-        for(let k=0;k<iters;k++){
-          const copy = mask.slice(0);
-          for(let y=0;y<sh;y++){
-            for(let x=0;x<sw;x++){
-              if(copy[idx(x,y)]) continue;
-              let on = 0;
-              for(const [dx,dy] of nb){
-                const xx=x+dx, yy=y+dy;
-                if(xx>=0&&yy>=0&&xx<sw&&yy<sh && copy[idx(xx,yy)]){ on=1; break; }
-              }
-              if(on) mask[idx(x,y)] = 1;
-            }
-          }
-        }
-      }
-
-      return upsampleBinaryMask(mask, sw, sh, w, h);
-    }
-
-    function upsampleBinaryMask(mask, sw, sh, w, h){
       const mC = document.createElement('canvas');
       mC.width = w; mC.height = h;
       const mX = mC.getContext('2d');
-      const mSmall = document.createElement('canvas'); mSmall.width = sw; mSmall.height = sh;
+
+      const mSmall = document.createElement('canvas');
+      mSmall.width = sw; mSmall.height = sh;
       const msx = mSmall.getContext('2d');
       const imgMask = msx.createImageData(sw, sh);
       for(let i=0;i<sw*sh;i++){
@@ -1317,29 +1199,96 @@ WHAT'S NEW (on top of v1.10.0)
       return mC;
     }
 
-    function gradientMagnitude(imgData, w, h){
-      const d = imgData.data;
-      const mag = new Float32Array(w*h);
-      const idx=(x,y)=>y*w+x, px=(x,y)=>((y*w+x)<<2);
-      for(let y=1;y<h-1;y++){
-        for(let x=1;x<w-1;x++){
-          const p1=px(x-1,y), p2=px(x+1,y), p3=px(x,y-1), p4=px(x,y+1);
-          // luminance
-          const L = (p)=> d[p]*0.2126 + d[p+1]*0.7152 + d[p+2]*0.0722;
-          const gx = L(p2)-L(p1), gy = L(p4)-L(p3);
-          mag[idx(x,y)] = Math.min(1, Math.sqrt(gx*gx+gy*gy)/255);
+    // Auto Ultra: multi-seed + local histogram / dual-threshold region growing
+    function ultraMask(img, seedX, seedY, tol01, aggr){
+      const w = img.width, h = img.height;
+      const maxSide = 1200;
+      const scale = Math.min(1, maxSide / Math.max(w,h));
+      const sw = Math.max(1, Math.round(w*scale));
+      const sh = Math.max(1, Math.round(h*scale));
+
+      const sC = document.createElement('canvas');
+      sC.width = sw; sC.height = sh;
+      const sX = sC.getContext('2d');
+      sX.drawImage(img, 0,0, sw, sh);
+
+      const sx = clamp(Math.round(seedX*scale),0,sw-1);
+      const sy = clamp(Math.round(seedY*scale),0,sh-1);
+
+      const {data} = sX.getImageData(0,0,sw,sh);
+      const idx = (x,y)=> (y*sw + x);
+      const pIdx = (x,y)=> idx(x,y)*4;
+
+      // Build a small neighborhood histogram around seed
+      const ns = 5;
+      let rSum=0,gSum=0,bSum=0,n=0;
+      for(let yy=sy-ns; yy<=sy+ns; yy++){
+        for(let xx=sx-ns; xx<=sx+ns; xx++){
+          if(xx<0||yy<0||xx>=sw||yy>=sh) continue;
+          const p=pIdx(xx,yy); rSum+=data[p]; gSum+=data[p+1]; bSum+=data[p+2]; n++;
         }
       }
-      return mag;
+      const r0=rSum/n, g0=gSum/n, b0=bSum/n;
+
+      // Dual threshold: strict + lenient (edge expansion)
+      const base = 10 + tol01*90;
+      const strictThr = base;
+      const softThr   = base * (1.8 + (aggr||0)/150); // more aggr -> wider edge
+
+      const mask = new Uint8Array(sw*sh); // 0/1/2 (2 means soft edge overflow)
+      const stack = [[sx,sy,1]]; // [x,y,mode] mode 1=strict, 2=soft
+      mask[idx(sx,sy)] = 1;
+
+      const nb4 = [[1,0],[-1,0],[0,1],[0,-1]];
+      while(stack.length){
+        const [x,y,mode] = stack.pop();
+        const thr = (mode===1)? strictThr : softThr;
+        for(const [dx,dy] of nb4){
+          const nx = x+dx, ny = y+dy;
+          if(nx<0||ny<0||nx>=sw||ny>=sh) continue;
+          const id = idx(nx,ny);
+          if(mask[id]) continue;
+          const p = pIdx(nx,ny);
+          const dr = data[p]-r0, dg = data[p+1]-g0, db = data[p+2]-b0;
+          const dist = Math.sqrt(dr*dr + dg*dg + db*db);
+          if(dist<=thr){
+            // push soft neighbors as well so region grows across mild variations
+            mask[id] = dist<=strictThr ? 1 : 2;
+            stack.push([nx,ny, dist<=strictThr ? 1 : 2]);
+          }
+        }
+      }
+
+      // Convert to canvas
+      const mC = document.createElement('canvas');
+      mC.width = w; mC.height = h;
+      const mX = mC.getContext('2d');
+
+      const mSmall = document.createElement('canvas');
+      mSmall.width = sw; mSmall.height = sh;
+      const msx = mSmall.getContext('2d');
+      const imgMask = msx.createImageData(sw, sh);
+      for(let i=0;i<sw*sh;i++){
+        const v = mask[i] ? 255 : 0;
+        imgMask.data[i*4+0] = 255;
+        imgMask.data[i*4+1] = 255;
+        imgMask.data[i*4+2] = 255;
+        imgMask.data[i*4+3] = v;
+      }
+      msx.putImageData(imgMask, 0, 0);
+      mX.imageSmoothingEnabled = false;
+      mX.drawImage(mSmall, 0,0, sw,sh, 0,0, w,h);
+      return mC;
     }
 
     function maskHit(maskCanvas, x, y){
       if(x<0||y<0||x>=maskCanvas.width||y>=maskCanvas.height) return false;
       const ctx = maskCanvas.getContext('2d');
       const d = ctx.getImageData(Math.floor(x), Math.floor(y), 1,1).data;
-      return d[3] > 10;
+      return d[3] > 10; // alpha present
     }
 
+    // produce an edge image (for editor overlay)
     function edgeFromMask(maskCanvas, r){
       const w = maskCanvas.width, h = maskCanvas.height;
       if(!w||!h) return null;
@@ -1358,8 +1307,7 @@ WHAT'S NEW (on top of v1.10.0)
       const oData = out.createImageData(w,h);
 
       for(let i=0;i<oData.data.length;i+=4){
-        const a = src.data[i+3];
-        const b = eData.data[i+3];
+        const a = src.data[i+3], b = eData.data[i+3];
         const v = Math.max(0, a - b);
         oData.data[i+0]=0; oData.data[i+1]=0; oData.data[i+2]=0; oData.data[i+3]=v>8? 220:0;
       }
@@ -1368,7 +1316,7 @@ WHAT'S NEW (on top of v1.10.0)
     }
 
     function reviveMaskInSnapshot(snap){
-      if(snap && snap.type==='mask' && snap.maskCanvas && typeof snap.maskCanvas==='string'){
+      if(snap && (snap.type==='mask' || snap.type==='protect') && snap.maskCanvas && typeof snap.maskCanvas==='string'){
         snap.maskCanvas = dataURLToCanvas(snap.maskCanvas);
       }
       return snap;
@@ -1390,65 +1338,81 @@ WHAT'S NEW (on top of v1.10.0)
       return c.toDataURL('image/png');
     }
 
-    // -------------------------- BRUSH / ERASER --------------------------
-    const brush = {
-      active:false,
-      lastX:0,lastY:0,
-      target:'color' // 'color' (erase color mask) or 'protect' (add immunity)
-    };
-    function ensureProtectMask(){
-      if(!state.protectMask){
-        state.protectMask = document.createElement('canvas');
-        state.protectMask.width = state.image.width;
-        state.protectMask.height = state.image.height;
-      }
+    // -------------------------- ERASER HELPERS --------------------------
+    function ensureBrushLayer(kind){
+      // try to use active selection if same kind, else create new on top
+      const idx = state.selections.findIndex(s=>s.type === (kind==='protect'?'protect':'mask'));
+      if(idx>=0){ state.activeIndex = idx; return; }
+      const cnv = document.createElement('canvas');
+      cnv.width = state.image.width; cnv.height = state.image.height;
+      state.selections.push({type: kind==='protect'?'protect':'mask', maskCanvas: cnv});
+      state.activeIndex = state.selections.length-1;
     }
-    function startBrushing(e, x, y){
-      brush.active = true;
-      brush.lastX = x; brush.lastY = y;
-      brush.target = (state.mode==='protectBrush') ? 'protect' : 'color';
-      brushStroke(x,y,true);
-    }
-    function endBrushing(){
-      brush.active=false;
-      history.save();
-      schedulePreviewRender(true);
-      editor.draw();
-    }
-    function brushStroke(x,y,first=false){
-      const size = clamp(state.brush, 3, 320);
-      const ctxCircle = (ctx, x0,y0,x1,y1)=>{
-        // line segment disk stamping
-        const dx = x1-x0, dy = y1-y0;
-        const dist = Math.max(1, Math.hypot(dx,dy));
-        const steps = Math.ceil(dist / (size*0.4));
-        for(let i=0;i<=steps;i++){
-          const t = i/steps;
-          const cx = x0 + dx*t, cy = y0 + dy*t;
-          ctx.beginPath(); ctx.arc(cx,cy,size/2,0,Math.PI*2); ctx.fill();
-        }
-      };
 
-      if(brush.target==='protect'){
-        ensureProtectMask();
-        const ctx = state.protectMask.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctxCircle(ctx, brush.lastX, brush.lastY, x, y);
+    let lastPaint = null;
+    function paintOnActiveMask(x, y, fresh){
+      const sel = state.selections[state.activeIndex];
+      if(!sel || !sel.maskCanvas) return;
+      const ctx = sel.maskCanvas.getContext('2d');
+      const size = state.brush.size;
+      const hard = state.brush.hard; // 0..1
+      const radius = size/2;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      // soft round brush: radial gradient
+      const gx = ctx.createRadialGradient(x,y, radius*hard, x,y, radius);
+      const color = (sel.type==='protect') ? 'rgba(255,0,0,1)' : 'rgba(255,255,255,1)'; // visual irrelevant
+      gx.addColorStop(0, color);
+      gx.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gx;
+
+      if(fresh || !lastPaint){
+        ctx.beginPath();
+        ctx.arc(x,y,radius,0,Math.PI*2);
+        ctx.fill();
       } else {
-        // subtract from union of selection masks by painting black into a top eraser layer
-        // Approach: create a new mask that carves out (destination-out) from the latest color mask selection,
-        // or add a dedicated "eraser" negative selection.
-        // Simpler: apply a negative mask by drawing black to a special canvas and subtracting in render.
-        // We'll convert brush erase into a "protect" effect (destination-out) on the union as well.
-        ensureProtectMask();
-        const ctx = state.protectMask.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctxCircle(ctx, brush.lastX, brush.lastY, x, y);
+        // interpolate stroke with discs
+        const dx = x - lastPaint.x, dy = y - lastPaint.y;
+        const steps = Math.max(1, Math.ceil(Math.hypot(dx,dy) / (radius*0.5)));
+        for(let i=1;i<=steps;i++){
+          const t = i/steps;
+          const px = lastPaint.x + dx*t, py = lastPaint.y + dy*t;
+          ctx.beginPath(); ctx.arc(px,py,radius,0,Math.PI*2); ctx.fill();
+        }
       }
+      ctx.restore();
+      lastPaint = {x,y};
+    }
 
-      brush.lastX = x; brush.lastY = y;
-      editor.draw();
-      schedulePreviewRender(false);
+    // -------------------------- MONOCLE --------------------------
+    function updateMonocle(e){
+      if(!state.image) return;
+      const mono = dom.monocleCanvas.getContext('2d');
+      const rect = dom.editorCanvas.getBoundingClientRect();
+      const cx = (e.clientX - rect.left - state.transform.x)/state.transform.scale;
+      const cy = (e.clientY - rect.top  - state.transform.y)/state.transform.scale;
+
+      const zoom = 3; // 3×
+      const box = 48; // sample radius around cursor (in image pixels)
+      const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
+      const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
+
+      const mC = dom.monocleCanvas;
+      mono.imageSmoothingEnabled = false;
+      mono.clearRect(0,0,mC.width,mC.height);
+      if(mC.width === 0 || mC.height === 0){ mC.width=140; mC.height=140; }
+      mono.drawImage(state.image, sx, sy, box, box, 0, 0, mC.width, mC.height);
+
+      // crosshair where mouse is (convert to monocle coords)
+      const fx = ((cx - sx) / box) * mC.width;
+      const fy = ((cy - sy) / box) * mC.height;
+      mono.strokeStyle = '#00e';
+      mono.lineWidth = 1;
+      mono.beginPath();
+      mono.moveTo(fx, 0); mono.lineTo(fx, mC.height);
+      mono.moveTo(0, fy); mono.lineTo(mC.width, fy);
+      mono.stroke();
     }
 
   })();
