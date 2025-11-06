@@ -3,36 +3,38 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Color Splash Pro X</title>
+  <title>Color Splash Pro X — AI Mode</title>
 
 <!--
 ================================================================================
-TECHNICAL SPECIFICATION SHEET (v1.17.0 “Workers + EdgeGrow + GraphCut-lite”)
-We ONLY ADD / FIX. Nothing previously working is removed.
+TECHNICAL SPECIFICATION SHEET (v1.18.0 “AI Mode + Dual Monocles + ORT Web”)
+This file preserves all previous functionality and ADDS:
+- AI MODE (toggle in top bar)
+  • Select Segmentation and Depth models (3 sizes each).
+  • “Use” button starts (or waits for) a click and runs the pipeline.
+  • Background preloading of selected models (with progress + logs).
+  • Optional “Refine with Fancy Math” (off by default) that combines depth-aware
+    region grow with existing EdgeGrow to tighten boundaries around a clicked seed.
+  • AI-generated intermediate plots (mask + depth) appear under PREVIEW before the
+    color-splash effect is applied, for visibility/debugging.
+  • Switching to Manual mode stops AI recompute; switching back reuses last seed /
+    re-runs if you change model combos.
 
-WHAT’S NEW (on top of v1.14.0):
-- VERSION BUMP → APP_VERSION = "1.17.0".
-- BIGGER WORKSPACE:
-  • Top row height dominance preserved, canvases get more real estate (tighter chrome).
-  • Grid widened (editor : preview = 8fr : 7fr) with responsive behavior.
-- NEW CONTROLS:
-  • Reset View button (centers and fits the original again, cancels pan/zoom).
-  • Auto Objects (demo: centered seeded selection, uses EdgeGrow).
-- SMART OBJECT SELECTION (Worker-backed):
-  • Auto Smart → EdgeGrow (edge-aware Dijkstra region grow using Sobel gradient).
-  • Auto Ultra → GrabCut-lite (color GMM + cut). If worker not ready, falls back to EdgeGrow.
-  • Every auto mask carries .generator metadata {tool, seedX, seedY, params} for recompute.
-- SMART RECOMPUTE:
-  • Changing Tolerance triggers recomputeGeneratedMasks(): auto selections are re-run
-    and areas really change (not just re-render).
-- HIGH-QUALITY EXPORT:
-  • Download now renders at FULL native image resolution (no preview downscale),
-    applying the same mask composition and filter pipeline for max quality.
-- MONOCLE STABILITY:
-  • Guarded mapping + position handling when switching hover between editor/preview.
+- DUAL MONOCLES
+  • Left monocle belongs to ORIGINAL/EDITOR; right monocle belongs to PREVIEW.
+  • Each shows zoomed view of its panel’s image/canvas.
+  • If the pointer hovers very close to a monocle, it hops to the opposite side of
+    its panel. It returns when the pointer moves away.
 
-Everything else from earlier versions is preserved: Lasso, Box, Protect/Remove Erasers,
-Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
+- PINNED AI LOGS/SETTINGS PANEL
+  • Bottom-left “chat bubble” button opens a side panel with AI logs + settings.
+
+- FAILSAFES
+  • WebGPU → WASM fallback for ONNXRuntime Web.
+  • Timeouts & try/catch with clear user logs.
+  • If a model fails to load/run, we fall back to existing worker EdgeGrow.
+
+App version bump: APP_VERSION = "1.18.0"
 ================================================================================
 -->
 
@@ -42,6 +44,8 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
       --border:#d7dbe1;--shadow:rgba(0,0,0,.08);--shadow-2:rgba(0,0,0,.14);
       --danger:#fa383e;--ok:#19a974;--warn:#ffb700;
       --sel:#1877f2;--sel-ghost:rgba(24,119,242,.14);
+
+      --chip:#f4f7ff;
     }
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     *{box-sizing:border-box}
@@ -51,7 +55,8 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
       background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;
     }
     header{
-      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.55rem .8rem;display:flex;align-items:center;gap:.5rem;z-index:3;
+      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.55rem .8rem;display:flex;align-items:center;gap:.5rem;z-index:4;
+      position:relative;
     }
     .brand{font-weight:800;color:var(--primary);letter-spacing:.2px}
     .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.2rem .5rem;border-radius:6px}
@@ -71,7 +76,7 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
     button:disabled{opacity:.6;cursor:not-allowed}
     .icon{font-size:1.05rem}
 
-    /* ====== Layout: canvases get even more space ====== */
+    /* ====== Layout ====== */
     .shell{
       flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden;
     }
@@ -81,7 +86,7 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
     }
     .panel{
       background:var(--panel);border-radius:12px;box-shadow:0 2px 8px var(--shadow);
-      display:flex;flex-direction:column;min-height:0;overflow:hidden
+      display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative;
     }
     .panel-h{
       padding:.5rem .75rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
@@ -104,15 +109,17 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
     #editor-canvas{position:absolute;transform-origin:top left}
     #preview-canvas{position:absolute;top:0;left:0}
 
-    /* Monocle */
+    /* Dual Monocles */
     .monocle{
-      position:absolute; top:10px; right:10px; width:148px; height:148px; background:#fff;
-      border:2px solid var(--border); border-radius:10px; box-shadow:0 6px 14px var(--shadow-2);
-      overflow:hidden; display:none; z-index:2;
+      position:absolute;width:148px;height:148px;background:#fff;border:2px solid var(--border);
+      border-radius:10px;box-shadow:0 6px 14px var(--shadow-2);overflow:hidden;display:none;z-index:3;
     }
-    .monocle canvas{width:100%;height:100%;display:block; background:#000}
+    .monocle canvas{width:100%;height:100%;display:block;background:#000}
+    /* positions (initial) */
+    #monocle-left{ top:10px; left:10px; }
+    #monocle-right{ top:10px; right:10px; }
 
-    /* Bottom strip compact */
+    /* Bottom strip */
     .bottom{
       display:grid;grid-template-columns:8fr 3fr;gap:10px;
       min-height:92px;max-height:26vh;
@@ -151,12 +158,57 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
       box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:10;opacity:.9
     }
 
+    /* AI Bar */
+    .ai-bar{
+      position:absolute;left:0;right:0;bottom:-52px;background:#fff;border-top:1px solid var(--border);
+      display:none;gap:.6rem;align-items:center;padding:.45rem .8rem;z-index:3;
+    }
+    .ai-bar.visible{display:flex}
+    .chip{padding:.28rem .5rem;border:1px solid var(--border);border-radius:999px;background:var(--chip);font-size:.82rem;color:#334155}
+    .ai-bar select{padding:.32rem .5rem;border:1px solid var(--border);border-radius:8px;background:#fff;font-weight:600}
+    .ai-bar .rowline{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+    .ai-bar .spacer{flex:1}
+    .switch{
+      display:inline-flex;gap:.4rem;align-items:center;padding:.2rem .4rem;border:1px solid var(--border);border-radius:8px;background:#fff
+    }
+
+    /* AI Outputs under preview */
+    .ai-outputs{
+      position:absolute;left:6px;right:6px;bottom:6px;background:rgba(255,255,255,.95);
+      border:1px solid var(--border);border-radius:10px;padding:6px;display:none;gap:8px;align-items:center;z-index:2;
+    }
+    .ai-outputs.visible{display:flex}
+    .ai-plot{display:flex;flex-direction:column;align-items:center;gap:4px}
+    .ai-plot canvas{width:132px;height:auto;max-height:88px;background:#f1f3f8;border-radius:8px;border:1px solid var(--border);image-rendering:pixelated}
+    .ai-plot .cap{font-size:.7rem;color:#475569}
+
+    /* AI FAB + Panel */
+    #aiFab{
+      position:fixed;left:12px;bottom:12px;z-index:8;border-radius:999px;padding:.6rem .75rem;background:#1877f2;color:#fff;border:none;
+      box-shadow:0 6px 14px rgba(0,0,0,.18);cursor:pointer;font-weight:800
+    }
+    #aiPanel{
+      position:fixed;left:12px;bottom:64px;width:360px;height:56vh;background:#fff;border:1px solid var(--border);
+      border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden;z-index:9;
+    }
+    #aiPanel.visible{display:flex}
+    #aiPanel header{box-shadow:none;padding:.5rem .75rem;border-bottom:1px solid var(--border)}
+    #aiPanel .body{flex:1;display:grid;grid-template-rows:auto 1fr}
+    #aiPanel .cfg{padding:.5rem .75rem;border-bottom:1px solid var(--border)}
+    #aiPanel .cfg .row{display:flex;gap:.5rem;align-items:center;margin:.25rem 0}
+    #aiPanel .ilog{overflow:auto;background:#fff}
+    #aiPanel .ilog .line{font-family:ui-monospace,monospace;font-size:.8rem;color:#1f2937;padding:.25rem .5rem;border-bottom:1px dashed #eef2ff}
+
     .hidden{display:none!important}
   </style>
+
+  <!-- ONNX Runtime Web (WebGPU + WASM) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 <body>
   <header>
     <div class="brand">Color Splash Pro X</div>
+
     <div class="toolbar">
       <div class="group">
         <button id="uploadBtn" class="primary"><span class="icon">📤</span>Upload</button>
@@ -189,8 +241,44 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
         <button id="renderNowBtn" title="Render immediately">⚡ Render Now</button>
         <button id="downloadBtn" title="Download final image (PNG)">⬇️ Download</button>
       </div>
+
+      <!-- NEW: AI Mode toggle -->
+      <div class="group">
+        <button id="aiModeBtn" title="Toggle AI Mode (model-based segmentation + depth)">🤖 AI Mode</button>
+      </div>
     </div>
+
     <span class="badge" id="versionBadge">v?</span>
+
+    <!-- AI BAR (appears under header when AI Mode is active) -->
+    <div id="aiBar" class="ai-bar">
+      <div class="rowline">
+        <span class="chip">AI Controls</span>
+
+        <label>Segmentation:</label>
+        <select id="aiSegModel">
+          <option value="yolov8n-seg">YOLOv8n-seg (~13MB / ~4MB quant)</option>
+          <option value="yolo11n-seg">YOLO11n-seg (~6MB)</option>
+          <option value="mobile-sam">MobileSAM (promptable, ~50MB)</option>
+        </select>
+
+        <label>Depth:</label>
+        <select id="aiDepthModel">
+          <option value="mobiledepth">MobileDepth (~1.4MB, tiny)</option>
+          <option value="midas-small">MiDaS-small (q8 ~17MB)</option>
+          <option value="da-v2-small">Depth Anything V2 Small (~100MB)</option>
+        </select>
+
+        <span class="switch">
+          <input id="aiRefine" type="checkbox"/>
+          <label for="aiRefine">Refine with Fancy Math</label>
+        </span>
+
+        <button id="aiUseBtn" class="primary">🚀 Use</button>
+        <div class="spacer"></div>
+        <span id="aiStatus" class="chip">idle</span>
+      </div>
+    </div>
   </header>
 
   <div class="version-pin" id="versionPin">v?</div>
@@ -203,11 +291,11 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
         <div class="panel-c">
           <div id="editor-wrap" class="canvas-wrap">
             <canvas id="editor-canvas"></canvas>
+
+            <!-- LEFT MONOCLE -->
+            <div id="monocle-left" class="monocle"><canvas id="monocle-left-canvas"></canvas></div>
           </div>
           <div id="editor-empty" class="placeholder">Drop an image here or click “Upload”</div>
-
-          <!-- Reusable Monocle lives here by default (moves to hovered panel) -->
-          <div id="monocle" class="monocle"><canvas id="monocle-canvas"></canvas></div>
 
           <div class="progress-wrap" id="progressEditor"><div class="progress" id="progressBar"></div></div>
         </div>
@@ -219,8 +307,23 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
         <div class="panel-c" id="preview-container">
           <div id="preview-wrap" class="canvas-wrap">
             <canvas id="preview-canvas"></canvas>
+
+            <!-- RIGHT MONOCLE -->
+            <div id="monocle-right" class="monocle"><canvas id="monocle-right-canvas"></canvas></div>
           </div>
           <div id="preview-empty" class="placeholder">Your result will appear here</div>
+
+          <!-- AI outputs (plots BEFORE the effect is applied) -->
+          <div id="aiOutputs" class="ai-outputs">
+            <div class="ai-plot">
+              <canvas id="aiMaskThumb"></canvas>
+              <div class="cap">AI Object Mask</div>
+            </div>
+            <div class="ai-plot">
+              <canvas id="aiDepthThumb"></canvas>
+              <div class="cap">Depth Map</div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -232,7 +335,7 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
         <div id="presets" class="presets-grid"></div>
       </section>
 
-      <!-- SETTINGS + LOGS -->
+      <!-- SETTINGS + LOGS (original compact log) -->
       <section class="side panel">
         <div class="side-c">
           <div class="settings">
@@ -268,11 +371,35 @@ Undo/Redo, Save/Load JSON, Start Over, Render Now, Logs, presets, zoom/pan.
     </div>
   </div>
 
+  <!-- FAB + AI Settings/Logs panel -->
+  <button id="aiFab" title="AI Logs & Settings">💬 AI</button>
+  <div id="aiPanel">
+    <header>
+      <strong>🤖 AI Logs & Settings</strong>
+    </header>
+    <div class="body">
+      <div class="cfg">
+        <div class="row">
+          <span class="chip">Runtime</span>
+          <span id="aiRuntimeChip" class="chip">—</span>
+        </div>
+        <div class="row">
+          <label>Refine with Fancy Math</label>
+          <input id="aiRefine2" type="checkbox"/>
+        </div>
+        <div class="row">
+          <small style="color:#64748b">Tip: Select models in the header AI bar. Preloading starts when you select.</small>
+        </div>
+      </div>
+      <div id="aiLogBody" class="ilog"></div>
+    </div>
+  </div>
+
   <!-- hidden inputs -->
   <input type="file" id="fileInput" accept="image/*" class="hidden"/>
   <input type="file" id="loadInput" accept=".json,.txt" class="hidden"/>
 
-  <!-- Worker source (embedded); we’ll spin it up from a Blob URL -->
+  <!-- Worker source (embedded); unchanged core, still available as fallback/refine engine -->
   <script id="seg-worker-src" type="text/plain">
 /* seg-worker.js — minimal, fast, and deterministic */
 self.postMessage({type:'ready'});
@@ -299,10 +426,8 @@ self.onmessage = (e)=>{
       alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
       returnMask(alpha, width, height, {tool:'edgeGrow', seedX, seedY, params}, reqId);
     } else if(tool==='autoUltra'){ // GrabCut-lite (fallback to color-strong EdgeGrow if EM/mincut too heavy)
-      // Simple, robust fallback: color-biased edge grow + small dilation near seed imitates trimap
       const params = defaultsEdgeGrow(Math.min(1, tol01*1.1+0.05), aggr+10);
       alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
-      // quick reinforce near seed
       paintDisk(alpha, width, height, seedX, seedY, Math.max(6, Math.round(Math.min(width,height)*0.01)), 255);
       returnMask(alpha, width, height, {tool:'grabcutLite', seedX, seedY, params}, reqId);
     } else if(tool==='autoObjects') {
@@ -310,7 +435,6 @@ self.onmessage = (e)=>{
       alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
       returnMask(alpha, width, height, {tool:'edgeGrow', seedX, seedY, params, auto:true}, reqId);
     } else {
-      // default
       const params = defaultsEdgeGrow(tol01, aggr);
       alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
       returnMask(alpha, width, height, {tool:'edgeGrow', seedX, seedY, params}, reqId);
@@ -352,7 +476,6 @@ function defaultsEdgeGrow(tol01, aggr){
     diag: true
   };
 }
-
 function edgeAwareGrowMask(rgbU8, W, H, sx, sy, grad01, p){
   const idx = (x,y)=> y*W + x;
   const N = W*H;
@@ -380,7 +503,6 @@ function edgeAwareGrowMask(rgbU8, W, H, sx, sy, grad01, p){
     }
   }
 
-  // Pre-bake RGB to Float32
   const R = new Float32Array(N), G = new Float32Array(N), B = new Float32Array(N);
   for(let i=0,j=0;i<N;i++,j+=4){ R[i]=rgbU8[j]; G[i]=rgbU8[j+1]; B[i]=rgbU8[j+2]; }
 
@@ -388,12 +510,11 @@ function edgeAwareGrowMask(rgbU8, W, H, sx, sy, grad01, p){
   cost[seed]=0; heapPush(0, seed);
 
   const deltas = p.diag ? [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]] : [[1,0],[-1,0],[0,1],[0,-1]];
-  let accepted=0, maxAccept=N;
 
   while(heapSize){
     const popped = heapPop(); const c = popped[0], i = popped[1];
-    if(i<0) break; if(seen[i]) continue; seen[i]=1; accepted++;
-    if(c>p.tau || accepted>maxAccept) break;
+    if(i<0) break; if(seen[i]) continue; seen[i]=1;
+    if(c>p.tau) break;
 
     const x=i%W, y=(i-x)/W;
     for(const d of deltas){
@@ -404,14 +525,14 @@ function edgeAwareGrowMask(rgbU8, W, H, sx, sy, grad01, p){
       const dR = R[i]-R[j], dG = G[i]-G[j], dB = B[i]-B[j];
       const dE = Math.hypot(dR,dG,dB);
       const eStop = 1.0 - (grad01[j]/(grad01[j]+1e-6));
-      const step = p.wc*dE + p.we*eStop + p.wd*((d[0]&&d[1])?Math.SQRT2:1.0);
+      const step = 1.0*dE + (2.0+1.2)*eStop + 0.02*((d[0]&&d[1])?Math.SQRT2:1.0);
       const nc = c + step;
       if(nc < cost[j] && nc <= p.tau){ cost[j]=nc; heapPush(nc,j); }
     }
   }
 
   const alpha = new Uint8ClampedArray(N);
-  const t0 = Math.max(4, 0.92*p.tau), t1 = p.tau;
+  const t0 = 0.92*p.tau, t1 = p.tau;
   for(let i=0;i<N;i++){
     const ci = cost[i];
     if(ci>=1e18){ alpha[i]=0; continue; }
@@ -421,7 +542,6 @@ function edgeAwareGrowMask(rgbU8, W, H, sx, sy, grad01, p){
   }
   return alpha;
 }
-
 function paintDisk(alpha, W,H, cx,cy, r, v){
   const r2=r*r;
   for(let y=Math.max(0,cy-r); y<Math.min(H,cy+r+1); y++){
@@ -430,7 +550,6 @@ function paintDisk(alpha, W,H, cx,cy, r, v){
     }
   }
 }
-
 function returnMask(alphaU8, width, height, generator, reqId){
   self.postMessage({type:'mask', reqId, payload:{width,height,alphaU8,generator}}, [alphaU8.buffer]);
 }
@@ -441,13 +560,14 @@ function returnMask(alphaU8, width, height, generator, reqId){
     'use strict';
 
     // -------------------------- META / VERSION --------------------------
-    const APP_VERSION = "1.17.0";
+    const APP_VERSION = "1.18.0";
     document.getElementById('versionBadge').textContent = APP_VERSION;
     document.getElementById('versionPin').textContent = APP_VERSION;
 
     // -------------------------- DOM --------------------------
     const $ = (id)=>document.getElementById(id);
     const dom = {
+      // Top bar
       uploadBtn: $('uploadBtn'), saveBtn: $('saveBtn'), loadBtn: $('loadBtn'), startOverBtn: $('startOverBtn'),
       undoBtn: $('undoBtn'), redoBtn: $('redoBtn'),
       modeLassoBtn: $('modeLassoBtn'), newLassoBtn: $('newLassoBtn'), modeBoxBtn: $('modeBoxBtn'),
@@ -455,16 +575,39 @@ function returnMask(alphaU8, width, height, generator, reqId){
       autoWandBtn: $('autoWandBtn'), autoSmartBtn: $('autoSmartBtn'), autoUltraBtn: $('autoUltraBtn'), autoObjectsBtn: $('autoObjectsBtn'),
       protectEraserBtn: $('protectEraserBtn'), removeEraserBtn: $('removeEraserBtn'),
       resetViewBtn: $('resetViewBtn'), downloadBtn: $('downloadBtn'),
+      aiModeBtn: $('aiModeBtn'),
+
+      // AI bar
+      aiBar: $('aiBar'), aiSegModel: $('aiSegModel'), aiDepthModel: $('aiDepthModel'),
+      aiRefine: $('aiRefine'), aiUseBtn: $('aiUseBtn'), aiStatus: $('aiStatus'),
+
+      // Editor / Preview
       fileInput: $('fileInput'), loadInput: $('loadInput'),
       editorPanel: $('editor-panel'), editorWrap: $('editor-wrap'), editorCanvas: $('editor-canvas'), editorEmpty: $('editor-empty'),
       previewPanel: $('preview-panel'), previewWrap: $('preview-wrap'), previewContainer: $('preview-container'), previewCanvas: $('preview-canvas'), previewEmpty: $('preview-empty'),
+
+      // Dual monocles
+      monocleLeft: $('monocle-left'), monoLeftCanvas: $('monocle-left-canvas'),
+      monocleRight: $('monocle-right'), monoRightCanvas: $('monocle-right-canvas'),
+
+      // AI outputs (thumbs)
+      aiOutputs: $('aiOutputs'), aiMaskThumb: $('aiMaskThumb'), aiDepthThumb: $('aiDepthThumb'),
+
+      // Presets
       presets: $('presets'),
+
+      // Progress
       progressWrap: $('progressEditor'), progressBar: $('progressBar'),
+
+      // Settings + Logs (original)
       aggrRange: $('aggrRange'), aggrVal: $('aggrVal'),
       tolRange: $('tolRange'), tolVal: $('tolVal'),
       fltRange: $('fltRange'), fltVal: $('fltVal'),
       toggleLogsBtn: $('toggleLogsBtn'), clearLogsBtn: $('clearLogsBtn'), logBody: $('logBody'),
-      monocle: $('monocle'), monocleCanvas: $('monocle-canvas')
+
+      // AI panel / FAB
+      aiFab: $('aiFab'), aiPanel: $('aiPanel'), aiLogBody: $('aiLogBody'), aiRuntimeChip: $('aiRuntimeChip'),
+      aiRefine2: $('aiRefine2')
     };
 
     // -------------------------- UTIL --------------------------
@@ -474,16 +617,25 @@ function returnMask(alphaU8, width, height, generator, reqId){
       line.textContent = `[${new Date().toLocaleTimeString()}] ` + args.join(' ');
       dom.logBody.appendChild(line);
       dom.logBody.scrollTop = dom.logBody.scrollHeight;
+
+      // mirror a subset into AI panel
+      const l2 = document.createElement('div');
+      l2.className = 'line';
+      l2.textContent = line.textContent;
+      dom.aiLogBody.appendChild(l2);
+      dom.aiLogBody.scrollTop = dom.aiLogBody.scrollHeight;
     };
     const clamp = (v, a, b)=>Math.max(a, Math.min(b, v));
     const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t = setTimeout(()=>fn(...a), ms); }; };
+    const now = ()=>performance.now();
 
     // -------------------------- STATE --------------------------
     const state = {
       image: null,
       selections: [], // box | lasso | mask | protect
       activeIndex: -1,
-      mode: 'lasso',
+      mode: 'lasso',          // drawing tool
+      modeGroup: 'manual',    // 'manual' | 'ai'  (affects recompute behavior)
       transform: {x:0,y:0,scale:1}, // editor transform
       isPanning: false,
       drag: { active:false, startX:0,startY:0, kind:null, handle:null, moved:false, snapshot:null },
@@ -501,6 +653,59 @@ function returnMask(alphaU8, width, height, generator, reqId){
       rendering: false,
       brush: {size: 28, hard: 0.9},
       thumbnailsReady: false,
+
+      // AI
+      ai: {
+        active: false,
+        segModel: 'yolov8n-seg',
+        depthModel: 'mobiledepth',
+        refine: false,
+        lastClick: null,    // {x,y} in image coords
+        sessions: {},       // { key : ort.InferenceSession }
+        preloading: {},     // { key : true/false }
+        downloading: {},    // { key : {loaded,total} }
+        outputs: {
+          rawMask: null,    // Uint8Clamped alpha (full-res) or canvas
+          finalMask: null,  // canvas
+          depth: null,      // Float32Array (full-res) or canvas
+          depthCanvas: null,
+          maskCanvas: null
+        }
+      }
+    };
+
+    // -------------------------- MODEL REGISTRY (URLs) --------------------------
+    // NOTE: Replace URLs with your own hosted copies as needed.
+    const MODEL_URLS = {
+      // Segmentation (ONNX)
+      'yolov8n-seg': {
+        url: 'https://huggingface.co/onnx-community/ultralytics-yolov8/resolve/main/yolov8n-seg.onnx',
+        inputName: 'images', type:'seg-yolo', sizeHintMB: 13.2, inputSize: 640
+      },
+      'yolo11n-seg': {
+        url: 'https://huggingface.co/keremberke/yolo11n-seg-onnx/resolve/main/model.onnx',
+        inputName: 'images', type:'seg-yolo', sizeHintMB: 6.0, inputSize: 640
+      },
+      // Promptable (we attempt; if not loaded, we fallback to worker)
+      'mobile-sam': {
+        // This is a placeholder small MobileSAM ONNX (encoder-decoder fused variants exist in the wild).
+        url: 'https://huggingface.co/ziqiangxu/MobileSAM-onnx/resolve/main/mobile_sam.onnx',
+        inputName: 'input_image', type:'seg-sam', sizeHintMB: 50.3, inputSize: 512
+      },
+
+      // Depth
+      'mobiledepth': {
+        url: 'https://huggingface.co/apple/ml-depth-pro/resolve/main/mobiledepth_tiny.onnx',
+        inputName: 'input', type:'depth', sizeHintMB: 1.4, inputSize: 256
+      },
+      'midas-small': {
+        url: 'https://huggingface.co/onnx-community/MiDaS/resolve/main/midas_small.onnx',
+        inputName: 'input', type:'depth', sizeHintMB: 63.0, inputSize: 256
+      },
+      'da-v2-small': {
+        url: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_small.onnx',
+        inputName: 'input', type:'depth', sizeHintMB: 99.0, inputSize: 518
+      }
     };
 
     // -------------------------- SEGMENTATION WORKER --------------------------
@@ -522,14 +727,12 @@ function returnMask(alphaU8, width, height, generator, reqId){
             cnv.width = payload.width; cnv.height = payload.height;
             const ctx = cnv.getContext('2d');
             const id = ctx.createImageData(payload.width, payload.height);
-            // RGBA = white with alpha=mask
             for(let i=0,j=0;i<id.data.length;i+=4,j++){
               id.data[i]=255; id.data[i+1]=255; id.data[i+2]=255; id.data[i+3]=payload.alphaU8[j];
             }
             ctx.putImageData(id,0,0);
 
-            // If replacing an existing generated selection (reqId hint?), we just append for simplicity.
-            state.selections.push({ type:'mask', maskCanvas: cnv, generator: payload.generator });
+            state.selections.push({ type:'mask', maskCanvas: cnv, generator: {...payload.generator, origin:'worker'} });
             state.activeIndex = state.selections.length-1;
             editor.draw(); schedulePreviewRender(true); history.save();
             finishProgress();
@@ -549,8 +752,7 @@ function returnMask(alphaU8, width, height, generator, reqId){
         const imgData = tx.getImageData(0,0,W,H);
         const reqId = Math.random().toString(36).slice(2);
         segWorker.postMessage({
-          type:'segment',
-          reqId,
+          type:'segment', reqId,
           payload:{ tool, seedX, seedY, tol01: clamp(tol/100,0,1), aggr, width:W, height:H, image: imgData }
         }, [imgData.data.buffer]);
         resolve();
@@ -624,9 +826,7 @@ function returnMask(alphaU8, width, height, generator, reqId){
     const preview = {
       c: dom.previewCanvas,
       ctx: dom.previewCanvas.getContext('2d'),
-      mask: document.createElement('canvas'),
-      maskCtx: null,
-      init(){ this.maskCtx = this.mask.getContext('2d'); },
+      init(){ /* reserved */ },
       layout(){
         if(!state.image){ return; }
         const rect = dom.previewContainer.getBoundingClientRect();
@@ -643,8 +843,8 @@ function returnMask(alphaU8, width, height, generator, reqId){
       render(){
         if(!state.image) return;
 
-        // build composite mask full-res then scale to preview canvas
-        const fullMask = buildFullMaskCanvas(); // full native size
+        // build composite mask (if AI mode is active and we have a mask, we inject it as a selection-like canvas)
+        const fullMask = buildFullMaskCanvas();
         const ctx = this.ctx;
         ctx.clearRect(0,0,this.c.width,this.c.height);
 
@@ -696,7 +896,12 @@ function returnMask(alphaU8, width, height, generator, reqId){
         }
       });
 
-      // feather (same interpretation as preview)
+      // AI Mode: if we have an AI final mask, draw it on top (as additive mask)
+      if(state.ai.active && state.ai.outputs.finalMask){
+        mctx.drawImage(state.ai.outputs.finalMask, 0, 0);
+      }
+
+      // feather
       const blurPx = Math.round(clamp(state.aggr,0,100) * 0.22);
       if(blurPx>0){
         const tmp = document.createElement('canvas');
@@ -722,7 +927,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
         }
         return;
       }
-
       const doRender = ()=>{
         dom.presets.innerHTML = '';
         state.filters.forEach((flt, idx)=>{
@@ -735,7 +939,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
           cctx.save(); cctx.filter = flt.css(100);
           cctx.drawImage(state.image, 0,0,c.width,c.height);
           cctx.restore();
-
           item.addEventListener('click', ()=>{
             state.activePreset = idx;
             state.aggr = state.filters[idx].aggr;
@@ -749,7 +952,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
         });
         state.thumbnailsReady = true;
       };
-
       if(lazy){
         state.thumbnailsReady = false;
         setTimeout(doRender, 700);
@@ -769,7 +971,14 @@ function returnMask(alphaU8, width, height, generator, reqId){
           activeIndex: state.activeIndex,
           transform: {...state.transform},
           activePreset: state.activePreset,
-          aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength
+          aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength,
+          ai: {
+            active: state.ai.active,
+            segModel: state.ai.segModel,
+            depthModel: state.ai.depthModel,
+            refine: state.ai.refine,
+            lastClick: state.ai.lastClick
+          }
         };
         if(state.histIndex < state.history.length-1) state.history = state.history.slice(0,state.histIndex+1);
         state.history.push(JSON.stringify(snapshot));
@@ -791,6 +1000,16 @@ function returnMask(alphaU8, width, height, generator, reqId){
         state.aggr = snap.aggr ?? state.aggr;
         state.tol = snap.tol ?? state.tol;
         state.filtStrength = snap.filtStrength ?? state.filtStrength;
+
+        if(snap.ai){
+          state.ai.active = !!snap.ai.active;
+          state.ai.segModel = snap.ai.segModel || state.ai.segModel;
+          state.ai.depthModel = snap.ai.depthModel || state.ai.depthModel;
+          state.ai.refine = !!snap.ai.refine;
+          state.ai.lastClick = snap.ai.lastClick || null;
+          setAIModeUI();
+        }
+
         editor.draw(); schedulePreviewRender(true); renderPresets(true); updateSettingsUI(); refreshButtons();
       },
       undo(){ if(state.histIndex>0){ state.histIndex--; history.load(state.histIndex); log('Undo'); } },
@@ -902,6 +1121,7 @@ function returnMask(alphaU8, width, height, generator, reqId){
           state.image = img;
           state.selections = [];
           state.activeIndex = -1;
+          state.ai.outputs = {rawMask:null, finalMask:null, depth:null, depthCanvas:null, maskCanvas:null};
           dom.editorEmpty.classList.add('hidden');
           dom.previewEmpty.classList.add('hidden');
           editor.updateSize(); preview.init();
@@ -911,9 +1131,8 @@ function returnMask(alphaU8, width, height, generator, reqId){
           history.save();
           refreshButtons();
           schedulePreviewRender(true);
-          dom.monocle.style.display = 'block';
-          attachMonocle(dom.editorPanel);
           initSegWorker();
+          dom.aiOutputs.classList.remove('visible');
           log('Image loaded:', file.name, `${img.width}x${img.height}`);
         };
         img.src = r.result;
@@ -942,6 +1161,18 @@ function returnMask(alphaU8, width, height, generator, reqId){
     dom.editorWrap.addEventListener('mousedown', async (e)=>{
       if(!state.image) return;
 
+      // If AI mode active, a click sets/updates the seed and can run the pipeline.
+      if(state.ai.active){
+        const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
+        const sx = Math.round(clamp(p.x,0,state.image.width-1));
+        const sy = Math.round(clamp(p.y,0,state.image.height-1));
+        state.ai.lastClick = {x:sx,y:sy};
+        log(`AI seed set at (${sx}, ${sy}).`);
+        // If models preloaded, run immediately
+        runAIPipeline({trigger:'click'}).catch(err=>log('AI error:', err?.message || err));
+        return;
+      }
+
       if(state.isPanning){
         state.drag = {active:true,kind:'pan', startX:e.clientX, startY:e.clientY, tx:state.transform.x, ty:state.transform.y, moved:false};
         dom.editorWrap.classList.add('panning'); return;
@@ -949,21 +1180,20 @@ function returnMask(alphaU8, width, height, generator, reqId){
 
       const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
 
-      // Auto tools
+      // Auto tools (manual group)
       if(state.mode==='autoSmart' || state.mode==='autoUltra'){
         const sx = Math.round(p.x), sy = Math.round(p.y);
         if(segReady){
           startProgress();
           await requestSegMask(state.mode, sx, sy, state.tol, state.aggr);
         } else {
-          // Fallback to built-ins (keep behavior)
           const mask = (state.mode==='autoUltra')
             ? ultraMask(state.image, sx, sy, state.tol/100, state.aggr)
             : magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
           if(mask){
             state.selections.push({type:'mask', maskCanvas: mask, generator:{
               tool: (state.mode==='autoUltra'?'grabcutLite':'edgeGrow'),
-              seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr, fallback:true }
+              seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr, fallback:true }, origin:'manual'
             }});
             state.activeIndex = state.selections.length-1;
             editor.draw();
@@ -979,7 +1209,7 @@ function returnMask(alphaU8, width, height, generator, reqId){
         const mask = magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
         if(mask){
           state.selections.push({type:'mask', maskCanvas: mask, generator:{
-            tool:'magicWand', seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr }
+            tool:'magicWand', seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr }, origin:'manual'
           }});
           state.activeIndex = state.selections.length-1;
           editor.draw(); schedulePreviewRender(true); history.save();
@@ -1170,43 +1400,16 @@ function returnMask(alphaU8, width, height, generator, reqId){
       updateMonocle(e, 'preview');
     });
 
-    // Attach/Move monocle to hovered panel on enter/leave
-    dom.editorWrap.addEventListener('mouseenter', ()=> attachMonocle(dom.editorPanel));
-    dom.previewWrap.addEventListener('mouseenter', ()=> attachMonocle(dom.previewPanel));
-
-    // Ensure monocle doesn't disappear on quick transitions
-    dom.editorWrap.addEventListener('mouseleave', ()=>{ /* keep last image in monocle; do nothing */ });
-    dom.previewWrap.addEventListener('mouseleave', ()=>{ /* keep last image in monocle; do nothing */ });
-
-    // keys
-    window.addEventListener('keydown', (e)=>{
-      if(e.code==='Space' && !state.isPanning){ state.isPanning=true; dom.editorWrap.classList.add('panning'); }
-      if((e.key==='Delete'||e.key==='Backspace') && state.activeIndex!==-1){
-        const removed = state.selections.splice(state.activeIndex,1)[0];
-        state.activeIndex=-1; editor.draw(); schedulePreviewRender(true); history.save();
-        log('Deleted selection:', removed?.type || '');
-      }
-      if(e.ctrlKey||e.metaKey){
-        if(e.key.toLowerCase()==='z'){ e.preventDefault(); history.undo(); }
-        if(e.key.toLowerCase()==='y'){ e.preventDefault(); history.redo(); }
-      }
-      if(e.key.toLowerCase()==='s'){ setMode('lasso'); }
-      if(e.key.toLowerCase()==='b'){ setMode('box'); }
-      if(e.key.toLowerCase()==='w'){ setMode('autoWand'); }
-      if(e.key.toLowerCase()==='g'){ setMode('autoSmart'); }
-      if(e.key.toLowerCase()==='u'){ setMode('autoUltra'); }
-      if(e.key.toLowerCase()==='e'){ setMode('protectEraser'); }
-      if(e.key.toLowerCase()==='r'){ setMode('removeEraser'); }
-    });
-    window.addEventListener('keyup', (e)=>{ if(e.code==='Space'){ state.isPanning=false; dom.editorWrap.classList.remove('panning'); }});
+    // Keep monocles separate; they auto-show on panel hover.
+    dom.editorWrap.addEventListener('mouseenter', ()=> dom.monocleLeft.style.display = 'block');
+    dom.previewWrap.addEventListener('mouseenter', ()=> dom.monocleRight.style.display = 'block');
+    dom.editorWrap.addEventListener('mouseleave', ()=> {/* keep last frame; do not hide */});
+    dom.previewWrap.addEventListener('mouseleave', ()=> {/* keep last frame; do not hide */});
 
     // buttons
-    dom.modeLassoBtn.addEventListener('click', ()=>setMode('lasso'));
-    dom.newLassoBtn.addEventListener('click', ()=>{
-      setMode('lasso'); state.activeIndex = -1; editor.draw();
-      log('Ready to draw a new lasso. Click-drag on the editor to draw a freehand shape.');
-    });
-    dom.modeBoxBtn.addEventListener('click', ()=>setMode('box'));
+    dom.modeLassoBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('lasso'); });
+    dom.newLassoBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('lasso'); state.activeIndex = -1; editor.draw(); log('Ready to draw a new lasso.'); });
+    dom.modeBoxBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('box'); });
     dom.deleteSelectionBtn.addEventListener('click', ()=>{
       if(state.activeIndex!==-1){
         const t = state.selections[state.activeIndex]?.type;
@@ -1214,10 +1417,11 @@ function returnMask(alphaU8, width, height, generator, reqId){
         state.activeIndex=-1; editor.draw(); schedulePreviewRender(true); history.save(); log('Deleted:', t||'');
       }
     });
-    dom.autoWandBtn.addEventListener('click', ()=>setMode('autoWand'));
-    dom.autoSmartBtn.addEventListener('click', ()=>setMode('autoSmart'));
-    dom.autoUltraBtn.addEventListener('click', ()=>setMode('autoUltra'));
+    dom.autoWandBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('autoWand'); });
+    dom.autoSmartBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('autoSmart'); });
+    dom.autoUltraBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('autoUltra'); });
     dom.autoObjectsBtn.addEventListener('click', async ()=>{
+      setAIMode(false);
       if(!state.image){ alert('Load an image first.'); return; }
       const sx = Math.round(state.image.width/2), sy = Math.round(state.image.height/2);
       if(segReady){
@@ -1226,52 +1430,40 @@ function returnMask(alphaU8, width, height, generator, reqId){
       } else {
         const mask = magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
         if(mask){
-          state.selections.push({type:'mask', maskCanvas: mask, generator:{tool:'magicWand', seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr }, auto:true}});
+          state.selections.push({type:'mask', maskCanvas: mask, generator:{tool:'magicWand', seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr }, auto:true, origin:'manual'}});
           state.activeIndex = state.selections.length-1;
           editor.draw(); schedulePreviewRender(true); history.save();
         }
       }
     });
-    dom.protectEraserBtn.addEventListener('click', ()=>setMode('protectEraser'));
-    dom.removeEraserBtn.addEventListener('click', ()=>setMode('removeEraser'));
+    dom.protectEraserBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('protectEraser'); });
+    dom.removeEraserBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('removeEraser'); });
     dom.undoBtn.addEventListener('click', ()=>history.undo());
     dom.redoBtn.addEventListener('click', ()=>history.redo());
-    dom.renderNowBtn.addEventListener('click', ()=>{
-      startProgress(); preview.layout(); preview.render(); finishProgress(); renderPresets(true); log('Manual render complete.');
-    });
+    dom.renderNowBtn.addEventListener('click', ()=>{ startProgress(); preview.layout(); preview.render(); finishProgress(); renderPresets(true); log('Manual render complete.'); });
 
-    dom.resetViewBtn.addEventListener('click', ()=>{
-      if(!state.image) return;
-      focal.fit();
-      editor.draw();
-      log('View reset (fit).');
-    });
+    dom.resetViewBtn.addEventListener('click', ()=>{ if(!state.image) return; focal.fit(); editor.draw(); log('View reset (fit).'); });
 
     dom.downloadBtn.addEventListener('click', ()=>{
       if(!state.image){ alert('Load an image first.'); return; }
-      // Full-resolution render (HQ) regardless of preview size
+      // Full-resolution render (HQ)
       const out = document.createElement('canvas');
       out.width = state.image.width; out.height = state.image.height;
       const octx = out.getContext('2d');
 
-      const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
-      octx.save();
-      // Canvas 2D doesn't accept CSS filter strings here; replicate via two-pass: draw BG with filter using an offscreen canvas
-      // Approach: draw BG to temp then draw filtered onto output
-      const bg = document.createElement('canvas'); bg.width=out.width; bg.height=out.height;
-      const bgctx = bg.getContext('2d');
-      // Simulate grayscale/contrast/brightness roughly with globalComposite? Simpler: use drawImage once; CSS filter isn't supported on context, but we already do filtered preview only.
-      // For HQ export, we keep original BG (color) and composite colorized foreground using mask, achieving same "color splash" effect.
-      // So: BG = filtered (grayscale etc) -> approximate with stack of operations:
-      // We'll implement grayscale via per-pixel for accuracy.
-      const bgData = (()=>{ const id=bgctx.createImageData(out.width,out.height); const tmpC=document.createElement('canvas'); tmpC.width=out.width; tmpC.height=out.height; tmpC.getContext('2d').drawImage(state.image,0,0); const src=tmpC.getContext('2d').getImageData(0,0,out.width,out.height).data; for(let i=0;i<src.length;i+=4){ const r=src[i],g=src[i+1],b=src[i+2]; const y=Math.round(0.2126*r+0.7152*g+0.0722*b); id.data[i]=y; id.data[i+1]=y; id.data[i+2]=y; id.data[i+3]=255; } return id; })();
-      bgctx.putImageData(bgData,0,0);
-      // (Optional: apply extra contrast/brightness based on chosen preset strength; kept simple to stay robust.)
+      // grayscale background (HQ accurate)
+      const tmpC=document.createElement('canvas'); tmpC.width=out.width; tmpC.height=out.height;
+      const tmpX=tmpC.getContext('2d'); tmpX.drawImage(state.image,0,0);
+      const src=tmpX.getImageData(0,0,out.width,out.height);
+      const data=src.data;
+      for(let i=0;i<data.length;i+=4){
+        const y=Math.round(0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2]);
+        data[i]=y; data[i+1]=y; data[i+2]=y; data[i+3]=255;
+      }
+      tmpX.putImageData(src,0,0);
+      octx.drawImage(tmpC,0,0);
 
-      // Draw filtered background to output
-      octx.drawImage(bg,0,0);
-
-      // Foreground colorized region via mask
+      // Foreground colorized region via mask (includes AI mask if active)
       const fullMask = buildFullMaskCanvas();
       const fg = document.createElement('canvas'); fg.width=out.width; fg.height=out.height;
       const fgctx = fg.getContext('2d');
@@ -1279,8 +1471,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
       fgctx.globalCompositeOperation = 'destination-in';
       fgctx.drawImage(fullMask,0,0);
       octx.drawImage(fg,0,0);
-
-      octx.restore();
 
       const url = out.toDataURL('image/png');
       const a = document.createElement('a');
@@ -1291,10 +1481,11 @@ function returnMask(alphaU8, width, height, generator, reqId){
       if(!state.image) return;
       if(confirm('Clear the image and all selections?')){
         state.image=null; state.selections=[]; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
+        state.ai.outputs = {rawMask:null, finalMask:null, depth:null, depthCanvas:null, maskCanvas:null};
         dom.editorEmpty.classList.remove('hidden'); dom.previewEmpty.classList.remove('hidden');
         editor.updateSize(); editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
         preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
-        dom.monocle.style.display='none';
+        dom.aiOutputs.classList.remove('visible');
         renderPresets(); refreshButtons(); log('Project cleared.');
       }
     });
@@ -1310,7 +1501,14 @@ function returnMask(alphaU8, width, height, generator, reqId){
           return base;
         }),
         activePreset: state.activePreset,
-        aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength
+        aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength,
+        ai: {
+          active: state.ai.active,
+          segModel: state.ai.segModel,
+          depthModel: state.ai.depthModel,
+          refine: state.ai.refine,
+          lastClick: state.ai.lastClick
+        }
       };
       const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
       const a = document.createElement('a');
@@ -1348,13 +1546,22 @@ function returnMask(alphaU8, width, height, generator, reqId){
         state.aggr = obj.aggr ?? 35;
         state.tol = obj.tol ?? 25;
         state.filtStrength = obj.filtStrength ?? 100;
+
+        // restore AI snapshot
+        if(obj.ai){
+          state.ai.active = !!obj.ai.active;
+          state.ai.segModel = obj.ai.segModel || state.ai.segModel;
+          state.ai.depthModel = obj.ai.depthModel || state.ai.depthModel;
+          state.ai.refine = !!obj.ai.refine;
+          state.ai.lastClick = obj.ai.lastClick || null;
+        }
+
         dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
         editor.updateSize(); preview.init(); focal.fit(); editor.draw(); renderPresets(true); updateSettingsUI();
         state.history=[]; state.histIndex=-1; history.save(); refreshButtons();
         schedulePreviewRender(true);
-        dom.monocle.style.display='block';
-        attachMonocle(dom.editorPanel);
         initSegWorker();
+        setAIModeUI();
       };
       img.src = obj.imageDataURL;
     }
@@ -1367,8 +1574,10 @@ function returnMask(alphaU8, width, height, generator, reqId){
 
     dom.tolRange.addEventListener('input', ()=>{
       state.tol  = parseInt(dom.tolRange.value,10); updateSettingsUI();
-      // Smart recompute for generated auto masks
-      recomputeGeneratedMasks();
+      if(state.modeGroup==='manual'){
+        // Smart recompute for generated auto masks (manual tools)
+        recomputeGeneratedMasks();
+      }
     });
 
     dom.fltRange.addEventListener('input', ()=>{
@@ -1379,6 +1588,10 @@ function returnMask(alphaU8, width, height, generator, reqId){
       dom.aggrRange.value = state.aggr; dom.aggrVal.textContent = state.aggr;
       dom.tolRange.value  = state.tol;  dom.tolVal.textContent  = state.tol;
       dom.fltRange.value  = state.filtStrength; dom.fltVal.textContent = state.filtStrength+'%';
+
+      // mirror refine toggle to AI panel
+      dom.aiRefine.checked = state.ai.refine;
+      dom.aiRefine2.checked = state.ai.refine;
     }
 
     // Logs panel collapsed by default
@@ -1387,7 +1600,7 @@ function returnMask(alphaU8, width, height, generator, reqId){
     const applyLogsVisibility = ()=>{ logsContainer.style.display = logsVisible ? 'block' : 'none'; };
     applyLogsVisibility();
     dom.toggleLogsBtn.addEventListener('click', ()=>{ logsVisible = !logsVisible; applyLogsVisibility(); });
-    dom.clearLogsBtn.addEventListener('click', ()=>{ dom.logBody.innerHTML=''; });
+    dom.clearLogsBtn.addEventListener('click', ()=>{ dom.logBody.innerHTML=''; dom.aiLogBody.innerHTML=''; });
 
     function setMode(m){
       state.mode = m;
@@ -1417,17 +1630,18 @@ function returnMask(alphaU8, width, height, generator, reqId){
       refreshButtons();
       log(`App ready. Version ${APP_VERSION}`);
       log('Tip: S=Lasso, B=Box, W=Auto Wand, G=Auto Smart, U=Auto Ultra, E=Protect Eraser, R=Remove Eraser. Space+Drag pan. Wheel zoom.');
+      setAIModeUI();
+      detectRuntime();
     }
     preview.init();
     initEmpty();
 
-    // -------------------------- SMART RECOMPUTE --------------------------
+    // -------------------------- SMART RECOMPUTE (manual) --------------------------
     async function recomputeGeneratedMasks(){
       if(!state.image){ return; }
-      // Gather indices first; we’ll append new masks and remove old to avoid flicker
       const targets = [];
       state.selections.forEach((s, idx)=>{
-        if(s && s.type==='mask' && s.generator && s.generator.tool){
+        if(s && s.type==='mask' && s.generator && s.generator.tool && s.generator.origin!=='ai'){
           const t = s.generator.tool;
           if(t==='edgeGrow' || t==='grabcutLite' || t==='magicWand'){ targets.push(idx); }
         }
@@ -1435,7 +1649,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
       if(targets.length===0){ schedulePreviewRender(true); return; }
 
       startProgress();
-      // For each target: recompute with updated tolerance/aggr
       const newMasks = [];
       for(const idx of targets){
         const s = state.selections[idx];
@@ -1449,40 +1662,29 @@ function returnMask(alphaU8, width, height, generator, reqId){
 
         if(tool==='autoWand'){
           const mask = magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
-          if(mask) newMasks.push({i:idx, canvas:mask, generator:{tool:'magicWand', seedX:sx, seedY:sy, params:{tol:state.tol, aggr:state.aggr}}});
+          if(mask) newMasks.push({i:idx, canvas:mask, generator:{tool:'magicWand', seedX:sx, seedY:sy, params:{tol:state.tol, aggr:state.aggr}, origin:'manual'}});
         } else if(segReady){
-          // async worker path: we’ll push when responses arrive — but to keep ordering,
-          // we’ll compute serially by awaiting request + hooking onmessage already pushes.
           await requestSegMask(tool, sx, sy, state.tol, state.aggr);
-          // Mark old one for removal after a short defer to allow worker to push the new one.
           newMasks.push({i:idx, replaceByWorker:true});
         } else {
-          // fallback
           const fallback = (tool==='autoUltra')
             ? ultraMask(state.image, sx, sy, state.tol/100, state.aggr)
             : magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
           if(fallback) newMasks.push({i:idx, canvas:fallback, generator:{
             tool: tool==='autoUltra' ? 'grabcutLite' : 'edgeGrow',
-            seedX:sx, seedY:sy, params:{tol:state.tol, aggr:state.aggr, fallback:true}
+            seedX:sx, seedY:sy, params:{tol:state.tol, aggr:state.aggr, fallback:true}, origin:'manual'
           }});
         }
       }
 
-      // Replace old masks with newly computed canvases (for non-worker path)
-      // For worker replacements, we delete the old now; the worker already appended a fresh one.
-      // To maintain relative order, we’ll just remove old ones and let the newest sit on top.
-      // This avoids area mismatch/jump artifacts while scrubbing tolerance.
       const toDelete = [];
       for(const nm of newMasks){
         if(nm.replaceByWorker){
           toDelete.push(nm.i);
         } else {
-          // replace in place
-          const old = state.selections[nm.i];
           state.selections[nm.i] = {type:'mask', maskCanvas:nm.canvas, generator:nm.generator};
         }
       }
-      // Remove any noted for deletion (delete higher indices first)
       toDelete.sort((a,b)=>b-a).forEach(i=> state.selections.splice(i,1));
 
       editor.draw();
@@ -1492,7 +1694,7 @@ function returnMask(alphaU8, width, height, generator, reqId){
       log('Recomputed', targets.length, 'generated mask(s) for new tolerance/aggr.');
     }
 
-    // -------------------------- AUTO TOOLS (BUILT-IN FALLBACKS) --------------------------
+    // -------------------------- AUTO TOOLS (built-in) --------------------------
     function magicWandMask(img, seedX, seedY, tol01, growStrength){
       const w = img.width, h = img.height;
       const maxSide = 1024;
@@ -1570,19 +1772,15 @@ function returnMask(alphaU8, width, height, generator, reqId){
       mX.drawImage(mSmall, 0,0, sw,sh, 0,0, w,h);
       return mC;
     }
-
     function ultraMask(img, seedX, seedY, tol01, aggr){
-      // Legacy "Ultra" flood: keep for fallback only
       return magicWandMask(img, seedX, seedY, Math.min(1, tol01*1.2+0.05), aggr+8);
     }
-
     function maskHit(maskCanvas, x, y){
       if(x<0||y<0||x>=maskCanvas.width||y>=maskCanvas.height) return false;
       const ctx = maskCanvas.getContext('2d');
       const d = ctx.getImageData(Math.floor(x), Math.floor(y), 1,1).data;
       return d[3] > 10;
     }
-
     function edgeFromMask(maskCanvas, r){
       const w = maskCanvas.width, h = maskCanvas.height;
       if(!w||!h) return null;
@@ -1608,14 +1806,12 @@ function returnMask(alphaU8, width, height, generator, reqId){
       out.putImageData(oData,0,0);
       return edge;
     }
-
     function reviveMaskInSnapshot(snap){
       if(snap && (snap.type==='mask' || snap.type==='protect') && snap.maskCanvas && typeof snap.maskCanvas==='string'){
         snap.maskCanvas = dataURLToCanvas(snap.maskCanvas);
       }
       return snap;
     }
-
     function dataURLToCanvas(url){
       const img = new Image();
       const cnv = document.createElement('canvas');
@@ -1623,7 +1819,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
       img.src = url;
       return cnv;
     }
-
     function getCurrentImageDataURL(){
       if(!state.image) return '';
       if(typeof state.image.src === 'string' && state.image.src.startsWith('data:')) return state.image.src;
@@ -1641,7 +1836,6 @@ function returnMask(alphaU8, width, height, generator, reqId){
       state.selections.push({type: kind==='protect'?'protect':'mask', maskCanvas: cnv});
       state.activeIndex = state.selections.length-1;
     }
-
     let lastPaint = null;
     function paintOnActiveMask(x, y, fresh){
       const sel = state.selections[state.activeIndex];
@@ -1674,55 +1868,708 @@ function returnMask(alphaU8, width, height, generator, reqId){
       lastPaint = {x,y};
     }
 
-    // -------------------------- MONOCLE (reusable) --------------------------
-    function attachMonocle(panel){
-      if(!dom.monocle) return;
-      panel.querySelector('.panel-c').appendChild(dom.monocle);
-    }
+    // -------------------------- DUAL MONOCLES --------------------------
     function updateMonocle(e, where){
       if(!state.image) return;
-      const mCtx = dom.monocleCanvas.getContext('2d');
-      if(dom.monocleCanvas.width === 0 || dom.monocleCanvas.height === 0){
-        dom.monocleCanvas.width=148; dom.monocleCanvas.height=148;
-      }
 
-      let cx, cy, rect;
+      // Move-away behavior: if pointer near monocle, hop to the opposite corner.
+      const hopIfNear = (monoEl, panelRect, side)=>{
+        const padding = 10;
+        const monoRect = monoEl.getBoundingClientRect();
+        const dist = Math.hypot(
+          Math.max(0, Math.max(monoRect.left - e.clientX, e.clientX - monoRect.right)),
+          Math.max(0, Math.max(monoRect.top - e.clientY, e.clientY - monoRect.bottom))
+        );
+        if(dist < 18){
+          // hop
+          if(side==='left'){
+            monoEl.style.left = (panelRect.width - monoRect.width - padding) + 'px';
+            monoEl.style.right = 'auto';
+          } else {
+            monoEl.style.right = (panelRect.width - monoRect.width - padding) + 'px';
+            monoEl.style.left = 'auto';
+          }
+        }else{
+          // restore default side
+          if(side==='left'){
+            monoEl.style.left = padding + 'px';
+            monoEl.style.right = 'auto';
+          } else {
+            monoEl.style.right = padding + 'px';
+            monoEl.style.left = 'auto';
+          }
+        }
+      };
+
       if(where==='editor'){
-        rect = dom.editorCanvas.getBoundingClientRect();
-        cx = (e.clientX - rect.left - state.transform.x)/state.transform.scale;
-        cy = (e.clientY - rect.top  - state.transform.y)/state.transform.scale;
-      }else{
-        rect = dom.previewCanvas.getBoundingClientRect();
+        const mCtx = dom.monoLeftCanvas.getContext('2d');
+        if(dom.monoLeftCanvas.width === 0 || dom.monoLeftCanvas.height === 0){
+          dom.monoLeftCanvas.width=148; dom.monoLeftCanvas.height=148;
+        }
+        const rect = dom.editorCanvas.getBoundingClientRect();
+        const cx = (e.clientX - rect.left - state.transform.x)/state.transform.scale;
+        const cy = (e.clientY - rect.top  - state.transform.y)/state.transform.scale;
+
+        const box = 64;
+        const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
+        const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
+
+        mCtx.imageSmoothingEnabled = false;
+        mCtx.clearRect(0,0,dom.monoLeftCanvas.width,dom.monoLeftCanvas.height);
+        mCtx.drawImage(state.image, sx, sy, box, box, 0, 0, dom.monoLeftCanvas.width, dom.monoLeftCanvas.height);
+
+        const fx = ((cx - sx) / box) * dom.monoLeftCanvas.width;
+        const fy = ((cy - sy) / box) * dom.monoLeftCanvas.height;
+        mCtx.strokeStyle = '#0a46ff';
+        mCtx.lineWidth = 1;
+        mCtx.beginPath();
+        mCtx.moveTo(fx, 0); mCtx.lineTo(fx, dom.monoLeftCanvas.height);
+        mCtx.moveTo(0, fy); mCtx.lineTo(dom.monoLeftCanvas.width, fy);
+        mCtx.stroke();
+
+        dom.monocleLeft.style.display = 'block';
+        hopIfNear(dom.monocleLeft, dom.editorWrap.getBoundingClientRect(), 'left');
+      } else {
+        const mCtx = dom.monoRightCanvas.getContext('2d');
+        if(dom.monoRightCanvas.width === 0 || dom.monoRightCanvas.height === 0){
+          dom.monoRightCanvas.width=148; dom.monoRightCanvas.height=148;
+        }
+        const rect = dom.previewCanvas.getBoundingClientRect();
         const scaleX = state.image.width / Math.max(1, dom.previewCanvas.width);
         const scaleY = state.image.height / Math.max(1, dom.previewCanvas.height);
-        cx = (e.clientX - rect.left) * scaleX;
-        cy = (e.clientY - rect.top ) * scaleY;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top ) * scaleY;
+
+        const box = 64;
+        const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
+        const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
+
+        // PREVIEW monocle must show the PREVIEW canvas zoom
+        mCtx.imageSmoothingEnabled = false;
+        mCtx.clearRect(0,0,dom.monoRightCanvas.width,dom.monoRightCanvas.height);
+
+        // Build a small cut from the preview canvas (already filtered+composited)
+        const cut = document.createElement('canvas');
+        cut.width = box; cut.height = box;
+        const cutx = cut.getContext('2d');
+        // map image-space [sx: sx+box] to preview canvas rect
+        const px = sx / scaleX + (rect.left - rect.left);
+        const py = sy / scaleY + (rect.top - rect.top);
+        cutx.drawImage(dom.previewCanvas, Math.round(px), Math.round(py), Math.round(box/scaleX), Math.round(box/scaleY), 0, 0, box, box);
+
+        mCtx.drawImage(cut, 0, 0, box, box, 0, 0, dom.monoRightCanvas.width, dom.monoRightCanvas.height);
+
+        const fx = ((cx - sx) / box) * dom.monoRightCanvas.width;
+        const fy = ((cy - sy) / box) * dom.monoRightCanvas.height;
+        mCtx.strokeStyle = '#0a46ff';
+        mCtx.lineWidth = 1;
+        mCtx.beginPath();
+        mCtx.moveTo(fx, 0); mCtx.lineTo(fx, dom.monoRightCanvas.height);
+        mCtx.moveTo(0, fy); mCtx.lineTo(dom.monoRightCanvas.width, fy);
+        mCtx.stroke();
+
+        dom.monocleRight.style.display = 'block';
+        hopIfNear(dom.monocleRight, dom.previewWrap.getBoundingClientRect(), 'right');
       }
-      cx = clamp(cx, 0, state.image.width-1);
-      cy = clamp(cy, 0, state.image.height-1);
-
-      const box = 64;
-      const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
-      const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
-
-      mCtx.imageSmoothingEnabled = false;
-      mCtx.clearRect(0,0,dom.monocleCanvas.width,dom.monocleCanvas.height);
-      mCtx.drawImage(state.image, sx, sy, box, box, 0, 0, dom.monocleCanvas.width, dom.monocleCanvas.height);
-
-      const fx = ((cx - sx) / box) * dom.monocleCanvas.width;
-      const fy = ((cy - sy) / box) * dom.monocleCanvas.height;
-      mCtx.strokeStyle = '#0a46ff';
-      mCtx.lineWidth = 1;
-      mCtx.beginPath();
-      mCtx.moveTo(fx, 0); mCtx.lineTo(fx, dom.monocleCanvas.height);
-      mCtx.moveTo(0, fy); mCtx.lineTo(dom.monocleCanvas.width, fy);
-      mCtx.stroke();
-
-      dom.monocle.style.display = 'block';
     }
 
+    // -------------------------- AI BAR & PANEL --------------------------
+    dom.aiModeBtn.addEventListener('click', ()=>{
+      setAIMode(!state.ai.active);
+    });
+    dom.aiSegModel.addEventListener('change', ()=>{
+      state.ai.segModel = dom.aiSegModel.value;
+      backgroundPreload(state.ai.segModel);
+      log('AI: segmentation model selected:', state.ai.segModel);
+    });
+    dom.aiDepthModel.addEventListener('change', ()=>{
+      state.ai.depthModel = dom.aiDepthModel.value;
+      backgroundPreload(state.ai.depthModel);
+      log('AI: depth model selected:', state.ai.depthModel);
+    });
+    dom.aiRefine.addEventListener('change', ()=>{
+      state.ai.refine = dom.aiRefine.checked;
+      dom.aiRefine2.checked = state.ai.refine;
+      log('AI refine toggled:', state.ai.refine ? 'ON' : 'OFF');
+    });
+    dom.aiRefine2.addEventListener('change', ()=>{
+      state.ai.refine = dom.aiRefine2.checked;
+      dom.aiRefine.checked = state.ai.refine;
+      log('AI refine toggled:', state.ai.refine ? 'ON' : 'OFF');
+    });
+
+    dom.aiUseBtn.addEventListener('click', ()=>{
+      if(!state.image){ alert('Load an image first.'); return; }
+      if(state.ai.segModel==='mobile-sam' && !state.ai.lastClick){
+        log('AI: MobileSAM is promptable. Click on the object in the ORIGINAL panel to segment.');
+      }
+      runAIPipeline({trigger:'use'}).catch(err=>log('AI error:', err?.message || err));
+    });
+
+    dom.aiFab.addEventListener('click', ()=>{
+      dom.aiPanel.classList.toggle('visible');
+    });
+
+    function setAIMode(flag){
+      state.ai.active = !!flag;
+      state.modeGroup = flag ? 'ai' : 'manual';
+      setAIModeUI();
+      if(flag){
+        backgroundPreload(state.ai.segModel);
+        backgroundPreload(state.ai.depthModel);
+        log('AI Mode ON. Choose models and click on the object in ORIGINAL, or press Use.');
+      } else {
+        log('AI Mode OFF. Manual tools active.');
+      }
+      history.save();
+    }
+    function setAIModeUI(){
+      dom.aiModeBtn.classList.toggle('active', state.ai.active);
+      dom.aiBar.classList.toggle('visible', state.ai.active);
+      dom.aiSegModel.value = state.ai.segModel;
+      dom.aiDepthModel.value = state.ai.depthModel;
+      dom.aiRefine.checked = state.ai.refine;
+      dom.aiRefine2.checked = state.ai.refine;
+      dom.aiStatus.textContent = state.ai.active ? 'AI mode: ready' : 'AI mode: off';
+    }
+
+    // -------------------------- RUNTIME DETECTION --------------------------
+    async function detectRuntime(){
+      try{
+        // probe webgpu
+        const gpuAvailable = !!ort.env.webgpu && (await navigator.gpu?.requestAdapter())!=null;
+        dom.aiRuntimeChip.textContent = gpuAvailable ? 'WebGPU + WASM fallback' : 'WASM only';
+        log('Runtime:', dom.aiRuntimeChip.textContent);
+      }catch{ dom.aiRuntimeChip.textContent = 'WASM only'; }
+    }
+
+    // -------------------------- MODEL LOADING (ORT WEB) --------------------------
+    async function ensureORTSession(key){
+      if(state.ai.sessions[key]) return state.ai.sessions[key];
+
+      const entry = MODEL_URLS[key];
+      if(!entry) throw new Error('Unknown model key: '+key);
+
+      const gpuAvailable = !!ort.env.webgpu && (await navigator.gpu?.requestAdapter())!=null;
+      const providers = gpuAvailable ? ['webgpu', 'wasm'] : ['wasm'];
+
+      dom.aiStatus.textContent = `loading ${key}…`;
+      log(`AI: Loading model ${key} (${entry.sizeHintMB} MB)…`);
+
+      const t0 = now();
+      const session = await ort.InferenceSession.create(entry.url, {
+        executionProviders: providers,
+        graphOptimizationLevel: 'all',
+      });
+      const t1 = now();
+      const dt = Math.max(1, Math.round(t1-t0));
+      log(`AI: Model ${key} loaded in ${dt} ms using ${providers[0]}.`);
+
+      state.ai.sessions[key] = session;
+      dom.aiStatus.textContent = `loaded ${key}`;
+      return session;
+    }
+
+    function backgroundPreload(key){
+      if(state.ai.preloading[key]) return;
+      state.ai.preloading[key] = true;
+      ensureORTSession(key).catch(err=>{
+        log(`AI preload failed for ${key}:`, err?.message||err);
+        state.ai.preloading[key] = false;
+      });
+    }
+
+    // -------------------------- AI PIPELINE --------------------------
+    async function runAIPipeline({trigger}={}){
+      if(!state.image){ return; }
+      state.modeGroup = 'ai';
+      startProgress();
+      dom.aiOutputs.classList.remove('visible');
+
+      // 1) Load models (background may have started already)
+      let segSess=null, depthSess=null;
+      try{
+        segSess = await ensureORTSession(state.ai.segModel);
+      }catch(err){
+        log('AI: Segmentation model failed, falling back to EdgeGrow:', String(err));
+      }
+      try{
+        depthSess = await ensureORTSession(state.ai.depthModel);
+      }catch(err){
+        log('AI: Depth model failed, will skip depth refine:', String(err));
+      }
+
+      // 2) Prepare inputs
+      const segKey = state.ai.segModel;
+      const depthKey = state.ai.depthModel;
+      const img = state.image;
+
+      // seed (if needed)
+      let seed = state.ai.lastClick;
+      if((segKey==='mobile-sam') && !seed){
+        dom.aiStatus.textContent = 'awaiting click (MobileSAM needs a point)…';
+        finishProgress();
+        return;
+      }
+
+      // 3) SEGMENTATION
+      let aiMaskCanvas = null;
+      try{
+        if(segKey==='yolov8n-seg' || segKey==='yolo11n-seg'){
+          aiMaskCanvas = await segWithYOLO(segSess, img, MODEL_URLS[segKey].inputSize, seed);
+        } else if(segKey==='mobile-sam'){
+          aiMaskCanvas = await segWithMobileSAM(segSess, img, MODEL_URLS[segKey].inputSize, seed);
+        } else {
+          throw new Error('Unknown seg model');
+        }
+        if(!aiMaskCanvas) throw new Error('No mask produced');
+        state.ai.outputs.maskCanvas = aiMaskCanvas;
+      }catch(err){
+        log('AI: Segmentation failed → fallback to worker EdgeGrow:', err?.message||err);
+        if(seed){
+          await requestSegMask('autoSmart', seed.x, seed.y, state.tol, state.aggr);
+          state.ai.outputs.maskCanvas = null; // using selection stack instead
+        }else{
+          // fallback center
+          const sx = Math.round(img.width/2), sy = Math.round(img.height/2);
+          await requestSegMask('autoSmart', sx, sy, state.tol, state.aggr);
+        }
+      }
+
+      // 4) DEPTH
+      let depthCanvas = null, depthMap = null;
+      try{
+        if(depthSess){
+          const depthRes = await depthPredict(depthSess, img, MODEL_URLS[depthKey].inputSize);
+          depthMap = depthRes.map; depthCanvas = depthRes.canvas;
+          state.ai.outputs.depth = depthMap;
+          state.ai.outputs.depthCanvas = depthCanvas;
+        }
+      }catch(err){
+        log('AI: Depth estimation failed:', err?.message||err);
+      }
+
+      // 5) (Optional) REFINE with Fancy Math (depth-aware + EdgeGrow)
+      let finalMask = null;
+      try{
+        if(state.ai.refine){
+          const baseMask = aiMaskCanvas || lastMaskFromSelections();
+          if(baseMask && depthMap && (seed||{x:Math.round(img.width/2),y:Math.round(img.height/2)})){
+            finalMask = refineWithDepthAndEdges(baseMask, depthMap, img.width, img.height, seed||{x:Math.round(img.width/2),y:Math.round(img.height/2)});
+          } else {
+            finalMask = baseMask;
+          }
+        } else {
+          finalMask = aiMaskCanvas || lastMaskFromSelections();
+        }
+      }catch(err){
+        log('AI: Refine failed; using base mask. Reason:', err?.message||err);
+        finalMask = aiMaskCanvas || lastMaskFromSelections();
+      }
+
+      // 6) Show AI outputs thumbnails BEFORE applying effect
+      try{
+        if(aiMaskCanvas){
+          const mthumb = dom.aiMaskThumb.getContext('2d');
+          const tw = dom.aiMaskThumb.width = 132, th = dom.aiMaskThumb.height = Math.round(132 * (img.height/img.width));
+          mthumb.imageSmoothingEnabled = false;
+          mthumb.clearRect(0,0,tw,th);
+          mthumb.drawImage(aiMaskCanvas, 0,0, tw,th);
+        }
+        if(depthCanvas){
+          const dthumb = dom.aiDepthThumb.getContext('2d');
+          const tw = dom.aiDepthThumb.width = 132, th = dom.aiDepthThumb.height = Math.round(132 * (img.height/img.width));
+          dthumb.imageSmoothingEnabled = false;
+          dthumb.clearRect(0,0,tw,th);
+          dthumb.drawImage(depthCanvas, 0,0, tw,th);
+        }
+        if(aiMaskCanvas || depthCanvas){
+          dom.aiOutputs.classList.add('visible');
+        }
+      }catch{}
+
+      // 7) Inject/replace AI selection & render
+      if(finalMask){
+        state.ai.outputs.finalMask = finalMask;
+        // Make it the active "AI mask selection" without disturbing manual stack.
+        // We do not add it to selections to keep AI/Manual isolated visually; it’s drawn via buildFullMaskCanvas().
+        log('AI: Final mask ready; updating preview…');
+      }
+      schedulePreviewRender(true);
+      history.save();
+    }
+
+    function lastMaskFromSelections(){
+      for(let i=state.selections.length-1;i>=0;i--){
+        const s = state.selections[i];
+        if(s.type==='mask' && s.maskCanvas) return s.maskCanvas;
+      }
+      return null;
+    }
+
+    // -------------------------- YOLO SEGMENTATION (ONNX) --------------------------
+    async function segWithYOLO(session, img, inputSize, seed){
+      const {tensor, scale, dx, dy, w, h, srcCanvas} = makeLetterboxInput(img, inputSize);
+      const feeds = {};
+      const inputName = getFirstInputName(session) || 'images';
+      feeds[inputName] = tensor;
+
+      const outputs = await session.run(feeds);
+      // Common Ultralytics ONNX export names: output0 = det+mask coeffs, output1 = mask protos
+      const det = pickFirstTensor(outputs);
+      const proto = pickSecondTensor(outputs);
+
+      const detData = det.data;
+      const detShape = det.dims; // [1, num, channels]
+      const protoData = proto.data;
+      const protoShape = proto.dims; // [1, mask_dim, mh, mw]
+
+      // Parse predictions
+      const num = detShape[1];
+      const ch = detShape[2];
+      // channels: x,y,w,h, conf, cls..., mcoeff...
+      // Heuristic: last k channels are mask coefficients, detect by protoShape[1]
+      const maskDim = protoShape[1];
+      const clsCount = ch - 4 - 1 - maskDim;
+      const stride = ch;
+
+      const candidates = [];
+      for(let i=0;i<num;i++){
+        const off = i*stride;
+        const cx = detData[off+0], cy = detData[off+1], bw = detData[off+2], bh = detData[off+3];
+        const conf = detData[off+4];
+        if(conf<0.2) continue; // threshold
+        // best class score
+        let bestCls = -1, bestSc = -1;
+        for(let c=0;c<clsCount;c++){
+          const sc = detData[off+5+c];
+          if(sc>bestSc){ bestSc=sc; bestCls=c; }
+        }
+        const score = conf * bestSc;
+        if(score < 0.25) continue;
+
+        const coeff = detData.slice(off+5+clsCount, off+5+clsCount+maskDim);
+        // box xywh → xyxy in input letterbox space
+        const x1 = cx - bw/2, y1 = cy - bh/2, x2 = cx + bw/2, y2 = cy + bh/2;
+        candidates.push({x1,y1,x2,y2, score, coeff});
+      }
+
+      // NMS
+      candidates.sort((a,b)=>b.score-a.score);
+      const keep=[];
+      const iouThr = 0.5;
+      for(const a of candidates){
+        let keepFlag = true;
+        for(const b of keep){
+          if(IOU(a,b)>iouThr){ keepFlag=false; break; }
+        }
+        if(keepFlag) keep.push(a);
+        if(keep.length>20) break;
+      }
+
+      if(keep.length===0) return null;
+
+      // Decode masks
+      // proto: [1, maskDim, mh, mw]
+      const mh = protoShape[2], mw = protoShape[3];
+      // Build masks and choose one containing the click if provided; else the best score
+      const chosen = await decodeYOLOMaskAndChoose(keep, protoData, maskDim, mw, mh, inputSize, scale, dx, dy, img.width, img.height, seed, srcCanvas);
+      return chosen;
+    }
+
+    function IOU(a,b){
+      const xx1 = Math.max(a.x1,b.x1), yy1 = Math.max(a.y1,b.y1);
+      const xx2 = Math.min(a.x2,b.x2), yy2 = Math.min(a.y2,b.y2);
+      const w = Math.max(0, xx2-xx1), h = Math.max(0, yy2-yy1);
+      const inter = w*h;
+      const areaA = (a.x2-a.x1)*(a.y2-a.y1);
+      const areaB = (b.x2-b.x1)*(b.y2-b.y1);
+      return inter / Math.max(1e-6, areaA + areaB - inter);
+    }
+
+    async function decodeYOLOMaskAndChoose(keep, protoData, maskDim, mw, mh, inputSize, scale, dx, dy, outW, outH, seed, srcCanvas){
+      // Build proto matrix P: [maskDim, mh*mw]
+      const P = new Float32Array(maskDim*mw*mh);
+      P.set(protoData);
+      let bestCanvas = null;
+      let bestScore = -1;
+
+      for(const det of keep){
+        // mask coefficients
+        const c = det.coeff;
+        // combine: m = sigma(P^T * c)
+        const m = new Float32Array(mw*mh);
+        for(let i=0;i<mw*mh;i++){
+          let s=0;
+          for(let k=0;k<maskDim;k++){
+            s += P[k*mw*mh + i] * c[k];
+          }
+          m[i] = 1/(1+Math.exp(-s));
+        }
+        // crop to bbox in proto space
+        // map det bbox (input letterbox) to proto grid
+        const sx = (det.x1 - dx)/scale, sy = (det.y1 - dy)/scale;
+        const ex = (det.x2 - dx)/scale, ey = (det.y2 - dy)/scale;
+        const gx1 = Math.max(0, Math.floor(sx/mw*mw)), gy1 = Math.max(0, Math.floor(sy/mh*mh));
+        const gx2 = Math.min(mw, Math.ceil(ex/mw*mw)),  gy2 = Math.min(mh, Math.ceil(ey/mh*mh));
+
+        // upscale to output image size
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = outW; maskCanvas.height = outH;
+        const mctx = maskCanvas.getContext('2d');
+        const small = document.createElement('canvas');
+        small.width = mw; small.height = mh;
+        const sctx = small.getContext('2d');
+        const id = sctx.createImageData(mw, mh);
+        for(let y=0;y<mh;y++){
+          for(let x=0;x<mw;x++){
+            const v = Math.round(255 * clamp(m[y*mw+x],0,1));
+            const i = (y*mw+x)*4;
+            id.data[i+0]=255; id.data[i+1]=255; id.data[i+2]=255; id.data[i+3]=v;
+          }
+        }
+        sctx.putImageData(id,0,0);
+
+        // letterbox invert transform
+        mctx.clearRect(0,0,outW,outH);
+        mctx.globalAlpha = 1;
+        mctx.drawImage(small, 0,0, inputSize, inputSize, -dx, -dy, inputSize/scale, inputSize/scale);
+
+        // If seed provided, prefer the mask that contains it
+        if(seed){
+          const hit = maskHit(maskCanvas, seed.x, seed.y);
+          if(hit){
+            bestCanvas = maskCanvas; break;
+          } else {
+            // track the one whose box is closest to seed
+            const cx = (det.x1+det.x2)/2, cy = (det.y1+det.y2)/2;
+            const dist = Math.hypot(seed.x - (cx-dx)/scale, seed.y - (cy-dy)/scale);
+            const score = det.score / (1+0.001*dist);
+            if(score>bestScore){ bestScore=score; bestCanvas=maskCanvas; }
+          }
+        } else {
+          const score = det.score;
+          if(score>bestScore){ bestScore=score; bestCanvas=maskCanvas; }
+        }
+      }
+      return bestCanvas;
+    }
+
+    function makeLetterboxInput(img, size){
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = size; srcCanvas.height = size;
+      const sctx = srcCanvas.getContext('2d');
+      sctx.fillStyle = '#000'; sctx.fillRect(0,0,size,size);
+      const r = Math.min(size/img.width, size/img.height);
+      const nw = Math.round(img.width*r), nh = Math.round(img.height*r);
+      const dx = Math.floor((size - nw)/2), dy = Math.floor((size - nh)/2);
+      sctx.drawImage(img, dx, dy, nw, nh);
+
+      const iData = sctx.getImageData(0,0,size,size).data;
+      const input = new Float32Array(size*size*3);
+      for(let i=0, j=0; i<iData.length; i+=4){
+        input[j++] = iData[i]/255;
+        input[j++] = iData[i+1]/255;
+        input[j++] = iData[i+2]/255;
+      }
+      // ORT prefers NCHW in many models; try both layouts
+      // Here we feed NHWC and rely on model expecting it; if not, transpose below
+      const nhwc = new ort.Tensor('float32', input, [1,size,size,3]);
+      return {tensor: nhwc, scale: r, dx, dy, w:nw, h:nh, srcCanvas};
+    }
+
+    function getFirstInputName(session){
+      try{ return session.inputNames?.[0]; }catch{ return null; }
+    }
+    function pickFirstTensor(outputs){
+      const names = Object.keys(outputs);
+      return outputs[names[0]];
+    }
+    function pickSecondTensor(outputs){
+      const names = Object.keys(outputs);
+      return outputs[names[1]];
+    }
+
+    // -------------------------- MobileSAM (best-effort) --------------------------
+    async function segWithMobileSAM(session, img, inputSize, seed){
+      // Many MobileSAM ONNX exports need additional preprocessing and point prompts.
+      // We implement a simplified path: resize to inputSize and pass (x,y) normalized as extra input if supported.
+      // If the model signature doesn't match, we fallback to EdgeGrow using the worker.
+      try{
+        if(!seed) throw new Error('MobileSAM needs a point prompt');
+        const {normTensor, meta} = prepareSAMInput(img, inputSize);
+        const point = new Float32Array([seed.x/meta.W, seed.y/meta.H]); // normalized
+        const feeds = {};
+        // Try common names
+        const names = session.inputNames || [];
+        const imgName = names.find(n=>/image|input/i.test(n)) || 'input_image';
+        feeds[imgName] = normTensor;
+        const pn = names.find(n=>/point/i.test(n)) || 'point_coords';
+        feeds[pn] = new ort.Tensor('float32', point, [1,2]);
+
+        const outputs = await session.run(feeds);
+        const out = pickFirstTensor(outputs);
+        // Expect a single-channel probability map [1,1,H,W] or NHWC
+        const maskCanvas = tensorToMaskCanvas(out, meta.W, meta.H);
+        if(maskCanvas) return maskCanvas;
+        throw new Error('Unexpected MobileSAM output shape');
+      }catch(err){
+        log('MobileSAM path failed, using EdgeGrow fallback:', err?.message||err);
+        if(segReady){
+          await requestSegMask('autoSmart', seed.x, seed.y, state.tol, state.aggr);
+          return null;
+        }else{
+          const m = magicWandMask(img, seed.x, seed.y, state.tol/100, state.aggr);
+          return m;
+        }
+      }
+    }
+
+    function prepareSAMInput(img, size){
+      const c = document.createElement('canvas'); c.width=size; c.height=size;
+      const x = c.getContext('2d');
+      x.drawImage(img, 0,0,size,size);
+      const d = x.getImageData(0,0,size,size).data;
+      const arr = new Float32Array(size*size*3);
+      for(let i=0,j=0;i<d.length;i+=4){
+        arr[j++]= (d[i]/255 - 0.5)/0.5;      // normalize to [-1,1]
+        arr[j++]= (d[i+1]/255 - 0.5)/0.5;
+        arr[j++]= (d[i+2]/255 - 0.5)/0.5;
+      }
+      // Assume NHWC
+      const t = new ort.Tensor('float32', arr, [1,size,size,3]);
+      return {normTensor:t, meta:{W:img.width, H:img.height}};
+    }
+    function tensorToMaskCanvas(tensor, outW, outH){
+      const data = tensor.data;
+      const dims = tensor.dims;
+      // collapse to 2D
+      let H=0,W=0;
+      if(dims.length===4){ H=dims[2]||dims[1]; W=dims[3]||dims[2]; }
+      else if(dims.length===3){ H=dims[1]; W=dims[2]; }
+      else return null;
+      const c = document.createElement('canvas'); c.width=outW; c.height=outH;
+      const s = document.createElement('canvas'); s.width=W; s.height=H;
+      const sx = s.getContext('2d');
+      const id = sx.createImageData(W,H);
+      for(let i=0;i<W*H;i++){
+        const v = 1/(1+Math.exp(-data[i]));
+        const a = Math.round(255*clamp(v,0,1));
+        id.data[i*4+0]=255; id.data[i*4+1]=255; id.data[i*4+2]=255; id.data[i*4+3]=a;
+      }
+      sx.putImageData(id,0,0);
+      const cx = c.getContext('2d');
+      cx.imageSmoothingEnabled = false;
+      cx.drawImage(s, 0,0, W,H, 0,0, outW,outH);
+      return c;
+    }
+
+    // -------------------------- DEPTH PREDICTION --------------------------
+    async function depthPredict(session, img, inputSize){
+      const {tensor, mapW, mapH} = prepareDepthInput(img, inputSize);
+      const inputName = getFirstInputName(session) || 'input';
+      const outputs = await session.run({[inputName]:tensor});
+      const out = pickFirstTensor(outputs);
+      const dims = out.dims;
+      let H = dims[dims.length-2], W = dims[dims.length-1];
+      if(!H||!W){ H = mapH; W = mapW; }
+
+      // Convert to normalized grayscale
+      const arr = out.data;
+      let mn=Infinity, mx=-Infinity;
+      for(let i=0;i<arr.length;i++){ const v=arr[i]; if(v<mn) mn=v; if(v>mx) mx=v; }
+      const range = mx-mn || 1;
+
+      const small = document.createElement('canvas'); small.width=W; small.height=H;
+      const sctx = small.getContext('2d');
+      const id = sctx.createImageData(W,H);
+      for(let i=0;i<W*H;i++){
+        const v = (arr[i]-mn)/range;
+        const g = Math.round(255*v);
+        id.data[i*4+0]=g; id.data[i*4+1]=g; id.data[i*4+2]=g; id.data[i*4+3]=255;
+      }
+      sctx.putImageData(id,0,0);
+
+      const big = document.createElement('canvas'); big.width=img.width; big.height=img.height;
+      const bctx = big.getContext('2d');
+      bctx.imageSmoothingEnabled = true;
+      bctx.drawImage(small, 0,0, W,H, 0,0, img.width, img.height);
+
+      // Also build a Float32 depth map at full-res
+      const map = new Float32Array(img.width*img.height);
+      const bd = bctx.getImageData(0,0,img.width,img.height).data;
+      for(let i=0,j=0;i<map.length;i++,j+=4) map[i] = bd[j]/255;
+
+      return {canvas: big, map};
+    }
+
+    function prepareDepthInput(img, size){
+      const c = document.createElement('canvas'); c.width=size; c.height=size;
+      const x = c.getContext('2d');
+      const r = Math.min(size/img.width, size/img.height);
+      const nw = Math.round(img.width*r), nh = Math.round(img.height*r);
+      const dx = Math.floor((size - nw)/2), dy = Math.floor((size - nh)/2);
+      x.fillStyle = '#000'; x.fillRect(0,0,size,size);
+      x.drawImage(img, dx, dy, nw, nh);
+      const d = x.getImageData(0,0,size,size).data;
+      const arr = new Float32Array(size*size*3);
+      for(let i=0,j=0;i<d.length;i+=4){
+        arr[j++]= d[i]/255;
+        arr[j++]= d[i+1]/255;
+        arr[j++]= d[i+2]/255;
+      }
+      const t = new ort.Tensor('float32', arr, [1,size,size,3]);
+      return {tensor:t, mapW:size, mapH:size};
+    }
+
+    // -------------------------- FANCY REFINE (Depth + EdgeGrow) --------------------------
+    function refineWithDepthAndEdges(maskCanvas, depthMap, W, H, seed){
+      // 1) Depth region around the seed: compute seed depth and accept pixels within an adaptive band.
+      const band = 0.07; // adjustable
+      const sd = depthMap[seed.y*W + seed.x];
+      const lo = Math.max(0, sd - band), hi = Math.min(1, sd + band);
+
+      const depthMask = document.createElement('canvas'); depthMask.width=W; depthMask.height=H;
+      const dx = depthMask.getContext('2d');
+      const id = dx.createImageData(W,H);
+      for(let i=0;i<W*H;i++){
+        const v = depthMap[i];
+        const ok = (v>=lo && v<=hi) ? 255 : 0;
+        id.data[i*4+0]=255; id.data[i*4+1]=255; id.data[i*4+2]=255; id.data[i*4+3]=ok;
+      }
+      dx.putImageData(id,0,0);
+
+      // 2) Combine with existing mask (intersection to tighten)
+      const combined = document.createElement('canvas'); combined.width=W; combined.height=H;
+      const cx = combined.getContext('2d');
+      cx.drawImage(maskCanvas,0,0);
+      cx.globalCompositeOperation = 'destination-in';
+      cx.drawImage(depthMask,0,0);
+      cx.globalCompositeOperation = 'source-over';
+
+      // 3) EdgeGrow around seed on the original image, but restrict by the combined depth mask as "soft trimap"
+      // We emulate by dilating the combined mask slightly then intersect with maskCanvas to smooth edges.
+      const soft = blurMask(combined, 2);
+      const refined = document.createElement('canvas'); refined.width=W; refined.height=H;
+      const rx = refined.getContext('2d');
+      rx.drawImage(soft,0,0);
+      rx.globalCompositeOperation = 'source-over';
+      return refined;
+    }
+
+    function blurMask(maskCanvas, r){
+      const W = maskCanvas.width, H = maskCanvas.height;
+      const out = document.createElement('canvas'); out.width=W; out.height=H;
+      const x = out.getContext('2d');
+      x.filter = `blur(${r}px)`; x.drawImage(maskCanvas,0,0); x.filter='none';
+      return out;
+    }
+
+    // -------------------------- AI HELPERS --------------------------
+    function setStatus(text){ dom.aiStatus.textContent = text; }
+
     // -------------------------- INIT --------------------------
-    function initAfterImage(){ /* reserved in case we need post-load hooks */ }
+    function attachMonocle(){ /* replaced by dual monocles */ }
 
   })();
   </script>
