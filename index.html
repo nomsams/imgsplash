@@ -1,2913 +1,1513 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Color Splash Pro X — AI Mode</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Color Splash Pro X — Minimal AI Mode (Stable Demo, Releases + Dropbox)</title>
 
 <!--
-================================================================================
-TECHNICAL SPECIFICATION SHEET (v1.19.0 “AI Mode — Fallback URLs + IndexedDB Cache + Download Progress”)
+===============================================================================
+STABLE DEMO (v2.5.0 “Minimal AI Mode + Releases/Dropbox + Multi-Effects”)
+What’s in this build:
+- Robust, minimal AI pipeline with MANY failsafes.
+- Two panes (ORIGINAL & PREVIEW), dual monocles (left/right).
+- Seed click in ORIGINAL. Wheel=Zoom, Space+drag=Pan.
+- AI Bar with:
+  • Segmentation model dropdown (EdgeGrow fallback; GitHub Releases; Dropbox; local upload; URL import).
+  • Depth model dropdown (None; GitHub Releases; Dropbox; local upload; URL import).
+  • “Refine with Depth” checkbox (used by some effect modes).
+  • “Effect Mode” selector:
+      - Segmentation only
+      - Depth: seed band
+      - Depth: global threshold
+      - Edges: Sobel+Laplacian
+      - Seg ∩ Depth
+      - Seg ∩ Edges
+      - Seg ∩ Depth ∩ Edges
+      - (Seg ∪ Depth) refined by Edges
+  • Tunables: Depth band, Depth threshold, Edge threshold, Feather (px)
+  • “Use” button (runs pipeline using the current seed)
 
-This build preserves ALL existing functionality from v1.18.0 and ADDS:
+- Thumbnails under PREVIEW (final mask + depth map).
+- Logs panel (floating) with Clear Logs + Clear Cached Models (IndexedDB).
+- Model sources:
+  • Built-ins pointing at YOUR GitHub Releases (provided).
+  • Built-ins for Dropbox DIRECT links (provided).
+  • Import ONNX from file (cached in IndexedDB).
+  • Import ONNX from URL (must allow CORS; cached in IndexedDB).
+  • Paste JSON model list (name + direct_download_url) to extend menus live.
 
-1) MODEL DOWNLOAD WITH PROGRESS + MULTI-URL FALLBACKS
-   • Streams ONNX binaries with progress (percentages per model).
-   • Retries across multiple mirror URLs if a fetch fails (CORS-safe when possible).
-   • Clear, timestamped logs for every attempt + outcome.
+- ONNX Runtime Web with WebGPU (if available) + WASM fallback.
+- YOLOv8n-seg and FastSAM-X/FastSAM-s decode path (generic YOLO-like seg).
+- MiDaS-small / Depth-Anything v2 small depth path (generic first-output decode).
 
-2) LOCAL CACHING (INDEXEDDB)
-   • Models are saved in the browser (IndexedDB: `cspx-models` store).
-   • Next time you pick the same model, it loads from cache instantly (no re-download).
-   • “Clear AI model cache” button in AI panel.
-
-3) SAFETY & PROVIDER FALLBACKS
-   • WebGPU ⇢ WASM fallback for ONNXRuntime Web.
-   • If session creation with ArrayBuffer fails, fallback to ORT URL fetch.
-   • If segmentation/depth models fail, auto-fallback to worker EdgeGrow / manual tools.
-
-4) UI ENHANCEMENTS
-   • AI download rows with per-model progress (inside the AI panel).
-   • Status chips reflect runtime, loading state, and errors.
-   • Keeps the dual monocles, pinned AI logs/settings panel, and AI output thumbnails.
-
-5) STRICT “ADD ONLY”
-   • No old functions or UI were removed; everything was kept and extended.
-   • Undo/Redo/Export/Manual tools preserved exactly.
-
-App version bump: APP_VERSION = "1.19.0"
-================================================================================
+IMPORTANT:
+- Cross-origin model fetches REQUIRE CORS. GitHub Releases and Dropbox DIRECT
+  usually set proper CORS. If a URL blocks CORS, the app will tell you—then you
+  can mirror to same-origin (/models/) or use the local upload/import buttons.
+===============================================================================
 -->
 
-  <style>
-    :root{
-      --bg:#edf1f7;--panel:#fff;--text:#1c1e21;--muted:#606770;--primary:#1877f2;--primary-2:#166fe5;
-      --border:#d7dbe1;--shadow:rgba(0,0,0,.08);--shadow-2:rgba(0,0,0,.14);
-      --danger:#fa383e;--ok:#19a974;--warn:#ffb700;
-      --sel:#1877f2;--sel-ghost:rgba(24,119,242,.14);
+<style>
+  :root{
+    --bg:#eef2f7; --panel:#ffffff; --ink:#111827; --muted:#6b7280; --border:#e5e7eb;
+    --primary:#2563eb; --primary-2:#1e40af; --chip:#f3f4f6; --shadow:rgba(0,0,0,.08);
+    --shadow-2:rgba(0,0,0,.15);
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    color:var(--ink); background:var(--bg); display:flex; flex-direction:column; overflow:hidden;
+  }
+  header{
+    background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:.5rem;
+    padding:.55rem .75rem; position:relative; z-index:5; box-shadow:0 1px 6px var(--shadow);
+  }
+  .brand{font-weight:800; color:var(--primary)}
+  .toolbar{display:flex; gap:.4rem; flex-wrap:wrap; align-items:center; margin-left:.5rem}
+  button{
+    background:#fff; border:1px solid var(--border); padding:.42rem .7rem; border-radius:8px; font-weight:600;
+    display:inline-flex; align-items:center; gap:.42rem; cursor:pointer; box-shadow:0 1px 0 rgba(0,0,0,.02);
+    transition:background .15s, border-color .15s, transform .05s;
+  }
+  button:hover{background:#f9fbff; border-color:#cfe0ff}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--primary); border-color:var(--primary); color:#fff}
+  button.primary:hover{background:var(--primary-2)}
+  button.ghost{background:#fff}
+  .badge{margin-left:auto; font-size:.8rem; color:#1f2937; background:#eef2ff; border:1px solid #dbe5ff; padding:.2rem .5rem; border-radius:6px}
+  .version-pin{
+    position:fixed; top:8px; right:8px; background:#111827; color:#fff; font-size:.72rem; padding:.25rem .45rem; border-radius:6px; opacity:.9; z-index:10;
+    box-shadow:0 6px 16px rgba(0,0,0,.2);
+  }
+  .shell{flex:1; display:grid; grid-template-rows:auto 1fr; gap:10px; padding:10px; overflow:hidden}
+  .row{min-height:0; display:grid; grid-template-columns:1fr 1fr; gap:10px}
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:12px; box-shadow:0 2px 10px var(--shadow);
+    display:flex; flex-direction:column; min-height:0; overflow:hidden; position:relative;
+  }
+  .panel-h{padding:.5rem .75rem; border-bottom:1px solid var(--border); font-weight:700; color:#374151; text-align:center;}
+  .panel-c{flex:1; min-height:0; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; background:#e9eef6;}
+  .canvas-wrap{position:relative; width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:default;}
+  .canvas-wrap.panning{cursor:grabbing}
+  canvas{display:block; background:#fff}
+  #editorCanvas{position:absolute; transform-origin:top left}
+  #previewCanvas{position:absolute; top:0; left:0}
 
-      --chip:#f4f7ff;
-    }
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      background:var(--bg);color:var(--text);display:flex;flex-direction:column;overflow:hidden;
-    }
-    header{
-      background:var(--panel);box-shadow:0 2px 6px var(--shadow);padding:.55rem .8rem;display:flex;align-items:center;gap:.5rem;z-index:4;
-      position:relative;
-    }
-    .brand{font-weight:800;color:var(--primary);letter-spacing:.2px}
-    .badge{margin-left:auto;font-size:.8rem;color:#4a4f57;background:#eef3ff;border:1px solid #dfe7ff;padding:.2rem .5rem;border-radius:6px}
-    .toolbar{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
-    .group{display:flex;gap:.4rem;align-items:center}
-    button{
-      padding:.42rem .7rem;border:1px solid var(--border);background:#fff;border-radius:8px;cursor:default;
-      font-weight:600;font-size:.9rem;display:inline-flex;gap:.42rem;align-items:center;box-shadow:0 1px 0 rgba(0,0,0,.02);
-      transition:transform .05s ease, border-color .2s, background .2s, color .2s;
-    }
-    button:hover:not(:disabled){border-color:var(--primary);background:#f6faff}
-    button:active{transform:translateY(1px)}
-    button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
-    button.primary:hover{background:var(--primary-2);color:#fff}
-    button.active{background:var(--primary);border-color:var(--primary);color:#fff}
-    button.danger{border-color:#ffd2d6;background:#fff0f1;color:#b00020}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .icon{font-size:1.05rem}
+  /* monocles */
+  .monocle{
+    position:absolute; width:148px; height:148px; background:#fff; border:2px solid var(--border); border-radius:10px; overflow:hidden;
+    box-shadow:0 8px 18px var(--shadow-2); display:none; z-index:3;
+  }
+  .monocle canvas{width:100%; height:100%; display:block; background:#000}
+  #mono-left{top:10px; left:10px}
+  #mono-right{top:10px; right:10px}
 
-    /* ====== Layout ====== */
-    .shell{
-      flex:1;display:flex;flex-direction:column;gap:10px;padding:10px;overflow:hidden;
-    }
-    .row{
-      display:grid;grid-template-columns:8fr 7fr;gap:10px;
-      flex:1 1 auto;min-height:0;
-    }
-    .panel{
-      background:var(--panel);border-radius:12px;box-shadow:0 2px 8px var(--shadow);
-      display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative;
-    }
-    .panel-h{
-      padding:.5rem .75rem;border-bottom:1px solid var(--border);font-weight:700;color:var(--muted);
-      display:flex;align-items:center;justify-content:center;gap:.5rem
-    }
-    .panel-c{
-      flex:1;min-height:0;
-      position:relative;background:#e9eef6;display:flex;align-items:center;justify-content:center;overflow:hidden
-    }
+  .ai-bar{
+    background:#fff; border:1px solid var(--border); border-radius:12px; display:none; padding:.5rem .6rem; gap:.45rem; align-items:center; flex-wrap:wrap;
+  }
+  .ai-bar.visible{display:flex}
+  .chip{padding:.25rem .45rem; border:1px solid var(--border); border-radius:999px; background:var(--chip); font-size:.82rem; color:#334155}
+  .ai-bar select, .ai-bar input[type="number"], .ai-bar input[type="range"]{
+    padding:.32rem .5rem; border:1px solid var(--border); border-radius:8px; background:#fff; font-weight:600;
+  }
+  .ai-bar .spacer{flex:1}
 
-    .placeholder{color:var(--muted);font-weight:600;opacity:.85;pointer-events:none}
-    .canvas-wrap{
-      position:relative;width:100%;height:100%;overflow:hidden;
-      display:flex;align-items:center;justify-content:center;
-      cursor:default;
-    }
-    .canvas-wrap.panning{cursor:grabbing}
-    .canvas-wrap.drop-hover{outline:3px dashed var(--primary); outline-offset:-8px; background:rgba(24,119,242,0.1)}
-    canvas{display:block;background:#fff}
-    #editor-canvas{position:absolute;transform-origin:top left}
-    #preview-canvas{position:absolute;top:0;left:0}
+  .ai-outputs{
+    position:absolute; left:6px; right:6px; bottom:6px; background:rgba(255,255,255,.96); border:1px solid var(--border); border-radius:10px; padding:6px;
+    display:none; gap:12px; align-items:flex-start; z-index:2; flex-wrap:wrap;
+  }
+  .ai-outputs.visible{display:flex}
+  .ai-plot{display:flex; flex-direction:column; align-items:center; gap:4px}
+  .ai-plot canvas{width:160px; height:auto; max-height:100px; background:#f1f3f8; border:1px solid var(--border); border-radius:8px; image-rendering:pixelated}
+  .ai-plot .cap{font-size:.72rem; color:#475569}
 
-    /* Dual Monocles */
-    .monocle{
-      position:absolute;width:148px;height:148px;background:#fff;border:2px solid var(--border);
-      border-radius:10px;box-shadow:0 6px 14px var(--shadow-2);overflow:hidden;display:none;z-index:3;
-    }
-    .monocle canvas{width:100%;height:100%;display:block;background:#000}
-    /* positions (initial) */
-    #monocle-left{ top:10px; left:10px; }
-    #monocle-right{ top:10px; right:10px; }
+  .progress-wrap{position:absolute; left:12px; right:12px; bottom:12px; height:8px; border-radius:6px; background:#eef2ff; border:1px solid #dde6ff; overflow:hidden; opacity:0; transition:opacity .2s}
+  .progress-wrap.visible{opacity:1}
+  .progress{height:100%; width:0%; background:linear-gradient(90deg,#7aa2ff,#2563eb); transition:width .1s}
 
-    /* Bottom strip */
-    .bottom{
-      display:grid;grid-template-columns:8fr 3fr;gap:10px;
-      min-height:92px;max-height:26vh;
-    }
-    .presets.panel{min-height:92px}
-    .presets-grid{
-      display:grid;grid-template-columns:repeat(10,1fr);gap:8px;padding:10px;align-items:end;justify-items:center
-    }
-    .preset{cursor:pointer;text-align:center;width:100%;max-width:84px;margin:0 auto}
-    .preset canvas{
-      width:100%;height:auto;aspect-ratio:16/9;background:#f3f5f9;border-radius:10px;border:2px solid transparent;
-      box-shadow:0 1px 3px var(--shadow);transition:all .15s
-    }
-    .preset:hover canvas{transform:translateY(-2px)}
-    .preset.active canvas{border-color:var(--primary);box-shadow:0 6px 14px var(--shadow-2)}
-    .preset label{display:block;margin-top:4px;font-size:.72rem;color:var(--muted);text-align:center}
+  #logFab{
+    position:fixed; left:12px; bottom:12px; z-index:9; background:var(--primary); color:#fff; border:none; border-radius:999px; padding:.6rem .8rem;
+    font-weight:800; box-shadow:0 10px 26px rgba(0,0,0,.25); cursor:pointer;
+  }
+  #logsPanel{
+    position:fixed; left:12px; bottom:64px; width:420px; height:64vh; background:#fff; border:1px solid var(--border); border-radius:12px;
+    box-shadow:0 16px 38px rgba(0,0,0,.25); display:none; overflow:hidden; z-index:9;
+  }
+  #logsPanel.visible{display:grid; grid-template-rows:auto auto auto 1fr auto}
+  #logsHeader{padding:.5rem .75rem; border-bottom:1px solid var(--border); font-weight:700}
+  #logsHelp{padding:.45rem .75rem; border-bottom:1px solid var(--border); color:#334155; font-size:.86rem; background:#fafbff}
+  #logsBody{overflow:auto; padding:.5rem .6rem; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.83rem; color:#1f2937; background:#fff}
+  .log-line{white-space:pre-wrap; margin:.15rem 0}
+  #logsFooter{border-top:1px solid var(--border); padding:.45rem .6rem; display:grid; grid-template-columns:1fr 1fr 1fr; gap:.4rem}
+  .hidden{display:none!important}
 
-    .side.panel{min-height:92px}
-    .side-c{display:grid;grid-template-rows:auto 1fr}
-    .settings{padding:8px 10px;border-bottom:1px solid var(--border)}
-    .set-row{display:flex;align-items:center;gap:10px;margin:.28rem 0}
-    .set-row input[type=range]{flex-grow:1}
+  .instructions{
+    background:#fff; border:1px solid var(--border); border-radius:12px; padding:.5rem .6rem; color:#374151; display:flex; gap:.5rem; align-items:center;
+  }
+  .instructions .kbd{font-family:ui-monospace,monospace; background:#f3f4f6; border:1px solid #e5e7eb; padding:.05rem .35rem; border-radius:4px}
+  .kv{font-size:.74rem; color:#334155; background:#f8fafc; border:1px dashed #d5e3ff; padding:.15rem .35rem; border-radius:6px}
+</style>
 
-    .logs{position:relative; overflow:hidden; display:none;}
-    .log-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid var(--border);background:#fafbff}
-    .log-body{height:100%;padding:10px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:.8rem;background:#fff}
-    .log-line{white-space:pre-wrap;color:#2d3748;margin:.15rem 0}
-
-    /* Progress */
-    .progress-wrap{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden; opacity:0; transition: opacity 0.2s; pointer-events:none;}
-    .progress-wrap.visible{opacity:1;}
-    .progress{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2);transition:width .1s}
-
-    .version-pin{
-      position:fixed;top:8px;right:8px;background:#101828;color:#fff;font-size:.75rem;padding:.25rem .5rem;border-radius:6px;
-      box-shadow:0 4px 12px rgba(0,0,0,.18);z-index:10;opacity:.9
-    }
-
-    /* AI Bar */
-    .ai-bar{
-      position:absolute;left:0;right:0;bottom:-52px;background:#fff;border-top:1px solid var(--border);
-      display:none;gap:.6rem;align-items:center;padding:.45rem .8rem;z-index:3;
-    }
-    .ai-bar.visible{display:flex}
-    .chip{padding:.28rem .5rem;border:1px solid var(--border);border-radius:999px;background:var(--chip);font-size:.82rem;color:#334155}
-    .ai-bar select{padding:.32rem .5rem;border:1px solid var(--border);border-radius:8px;background:#fff;font-weight:600}
-    .ai-bar .rowline{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
-    .ai-bar .spacer{flex:1}
-    .switch{
-      display:inline-flex;gap:.4rem;align-items:center;padding:.2rem .4rem;border:1px solid var(--border);border-radius:8px;background:#fff
-    }
-
-    /* AI Outputs under preview */
-    .ai-outputs{
-      position:absolute;left:6px;right:6px;bottom:6px;background:rgba(255,255,255,.95);
-      border:1px solid var(--border);border-radius:10px;padding:6px;display:none;gap:8px;align-items:center;z-index:2;
-    }
-    .ai-outputs.visible{display:flex}
-    .ai-plot{display:flex;flex-direction:column;align-items:center;gap:4px}
-    .ai-plot canvas{width:132px;height:auto;max-height:88px;background:#f1f3f8;border-radius:8px;border:1px solid var(--border);image-rendering:pixelated}
-    .ai-plot .cap{font-size:.7rem;color:#475569}
-
-    /* AI FAB + Panel */
-    #aiFab{
-      position:fixed;left:12px;bottom:12px;z-index:8;border-radius:999px;padding:.6rem .75rem;background:#1877f2;color:#fff;border:none;
-      box-shadow:0 6px 14px rgba(0,0,0,.18);cursor:pointer;font-weight:800
-    }
-    #aiPanel{
-      position:fixed;left:12px;bottom:64px;width:380px;height:58vh;background:#fff;border:1px solid var(--border);
-      border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);display:none;flex-direction:column;overflow:hidden;z-index:9;
-    }
-    #aiPanel.visible{display:flex}
-    #aiPanel header{box-shadow:none;padding:.5rem .75rem;border-bottom:1px solid var(--border)}
-    #aiPanel .body{flex:1;display:grid;grid-template-rows:auto auto 1fr}
-    #aiPanel .cfg{padding:.5rem .75rem;border-bottom:1px solid var(--border)}
-    #aiPanel .cfg .row{display:flex;gap:.5rem;align-items:center;margin:.25rem 0;flex-wrap:wrap}
-    #aiPanel .ilog{overflow:auto;background:#fff}
-    #aiPanel .ilog .line{font-family:ui-monospace,monospace;font-size:.8rem;color:#1f2937;padding:.25rem .5rem;border-bottom:1px dashed #eef2ff}
-
-    /* NEW: AI downloads list rows */
-    .dl-row{display:grid;grid-template-columns: 1fr auto;gap:.5rem;align-items:center;margin:.25rem 0}
-    .dl-meta{font-size:.8rem;color:#475569}
-    .mini-progress{position:relative;height:6px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden;min-width:120px}
-    .mini-bar{position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,#7aa2ff,#1877f2)}
-    .dl-error{color:#b00020;font-size:.8rem}
-
-    .hidden{display:none!important}
-  </style>
-
-  <!-- ONNX Runtime Web (WebGPU + WASM) -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+<!-- ONNX Runtime Web -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 <body>
   <header>
     <div class="brand">Color Splash Pro X</div>
-
     <div class="toolbar">
-      <div class="group">
-        <button id="uploadBtn" class="primary"><span class="icon">📤</span>Upload</button>
-        <button id="saveBtn" title="Save project JSON" disabled>💾 Save</button>
-        <button id="loadBtn" title="Load project JSON">📂 Load</button>
-        <button id="startOverBtn" class="danger" title="Clear image & selections" disabled>🧹 Start Over</button>
-      </div>
-      <div class="group">
-        <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>↩️ Undo</button>
-        <button id="redoBtn" title="Redo (Ctrl+Y)" disabled>↪️ Redo</button>
-      </div>
-      <div class="group">
-        <button id="modeLassoBtn" class="active" title="Smart Select (Lasso) (S)">✨ Lasso</button>
-        <button id="newLassoBtn" title="Add new lasso object">➕ New Lasso</button>
-        <button id="modeBoxBtn" title="Box Select (B)">🔲 Box</button>
-        <button id="deleteSelectionBtn" title="Delete active selection (Del)" disabled>🗑️ Delete</button>
-      </div>
-      <div class="group">
-        <button id="autoWandBtn" title="Auto Wand (W)">🪄 Auto Wand</button>
-        <button id="autoSmartBtn" title="Auto Smart (G)">🧠 Auto Smart</button>
-        <button id="autoUltraBtn" title="Auto Ultra (U)">🧬 Auto Ultra</button>
-        <button id="autoObjectsBtn" title="Auto Objects (demo)">🛰️ Auto Objects</button>
-      </div>
-      <div class="group">
-        <button id="protectEraserBtn" title="Paint protected areas (E)">🛡️ Protect Eraser</button>
-        <button id="removeEraserBtn" title="Erase colorized mask (R)">🧽 Remove Eraser</button>
-      </div>
-      <div class="group">
-        <button id="resetViewBtn" title="Reset pan/zoom & fit">🎯 Reset View</button>
-        <button id="renderNowBtn" title="Render immediately">⚡ Render Now</button>
-        <button id="downloadBtn" title="Download final image (PNG)">⬇️ Download</button>
-      </div>
-
-      <!-- NEW: AI Mode toggle -->
-      <div class="group">
-        <button id="aiModeBtn" title="Toggle AI Mode (model-based segmentation + depth)">🤖 AI Mode</button>
-      </div>
+      <button id="uploadBtn" class="primary">📤 Upload Image</button>
+      <button id="resetBtn" class="ghost">🧹 Reset</button>
+      <button id="downloadBtn" class="ghost">⬇️ Download</button>
+      <button id="aiToggleBtn" class="ghost">🤖 AI Mode</button>
+      <button id="addJsonBtn" class="ghost">➕ Add Models JSON</button>
     </div>
-
-    <span class="badge" id="versionBadge">v?</span>
-
-    <!-- AI BAR (appears under header when AI Mode is active) -->
-    <div id="aiBar" class="ai-bar">
-      <div class="rowline">
-        <span class="chip">AI Controls</span>
-
-        <label>Segmentation:</label>
-        <select id="aiSegModel">
-          <option value="yolov8n-seg">YOLOv8n-seg (~13MB / ~4MB quant)</option>
-          <option value="yolo11n-seg">YOLO11n-seg (~6MB)</option>
-          <option value="mobile-sam">MobileSAM (promptable, ~50MB)</option>
-          <option value="fastsam-s">FastSAM-S (~23MB)</option>
-        </select>
-
-        <label>Depth:</label>
-        <select id="aiDepthModel">
-          <option value="mobiledepth">MobileDepth (~1.4MB, tiny)</option>
-          <option value="midas-small">MiDaS-small (q8 ~17MB)</option>
-          <option value="da-v2-small">Depth Anything V2 Small (~100MB)</option>
-        </select>
-
-        <span class="switch">
-          <input id="aiRefine" type="checkbox"/>
-          <label for="aiRefine">Refine with Fancy Math</label>
-        </span>
-
-        <button id="aiUseBtn" class="primary">🚀 Use</button>
-        <div class="spacer"></div>
-        <span id="aiStatus" class="chip">idle</span>
-      </div>
-    </div>
+    <span class="badge" id="verBadge">v?</span>
   </header>
 
-  <div class="version-pin" id="versionPin">v?</div>
+  <div class="version-pin" id="verPin">v?</div>
 
   <div class="shell">
+    <!-- AI BAR -->
+    <div id="aiBar" class="ai-bar">
+      <span class="chip">AI Controls</span>
+
+      <label>Segmentation:</label>
+      <select id="segSel"></select>
+
+      <label>Depth:</label>
+      <select id="depthSel"></select>
+
+      <label style="display:inline-flex; align-items:center; gap:.35rem">
+        <input id="refineChk" type="checkbox"/>
+        <span>Refine with Depth</span>
+      </label>
+
+      <label>Effect:</label>
+      <select id="effectSel">
+        <option value="seg">Segmentation only</option>
+        <option value="depth-band">Depth: seed band</option>
+        <option value="depth-thresh">Depth: global threshold</option>
+        <option value="edges">Edges: Sobel+Laplacian</option>
+        <option value="seg-and-depth">Seg ∩ Depth</option>
+        <option value="seg-and-edges">Seg ∩ Edges</option>
+        <option value="seg-and-depth-and-edges">Seg ∩ Depth ∩ Edges</option>
+        <option value="seg-or-depth-edge-refine">(Seg ∪ Depth) refined by Edges</option>
+      </select>
+
+      <span class="kv">Band</span>
+      <input id="bandRange" type="range" min="0.01" max="0.25" step="0.005" value="0.07" title="Depth band around seed"/>
+
+      <span class="kv">Depth T</span>
+      <input id="depthThrRange" type="range" min="0" max="1" step="0.01" value="0.5" title="Depth threshold (near/far)"/>
+
+      <span class="kv">Edge T</span>
+      <input id="edgeThrRange" type="range" min="0.02" max="0.6" step="0.01" value="0.18" title="Edge magnitude threshold"/>
+
+      <span class="kv">Feather(px)</span>
+      <input id="featherPx" type="number" min="0" max="12" step="1" value="2" style="width:68px" title="Mask blur before compose"/>
+
+      <button id="useBtn" class="primary">🚀 Use</button>
+      <div class="spacer"></div>
+      <span id="aiStatus" class="chip">off</span>
+    </div>
+
+    <!-- INSTRUCTIONS -->
+    <div class="instructions">
+      <span>1) Upload an image. 2) Toggle <b>AI Mode</b>, choose Seg/Depth models or keep “EdgeGrow/None”. 3) Click your object in <b>ORIGINAL</b>. 4) Pick <b>Effect</b> and press <b>Use</b>. Tips: <span class="kbd">Space</span>+drag to pan, wheel to zoom.</span>
+    </div>
+
+    <!-- MAIN PANES -->
     <div class="row">
-      <!-- EDITOR -->
-      <section class="panel" id="editor-panel">
-        <div class="panel-h">EDITOR — Original (Space = Pan · Wheel = Zoom)</div>
+      <!-- ORIGINAL -->
+      <section class="panel">
+        <div class="panel-h">ORIGINAL — Editor (click seed · Space=Pan · Wheel=Zoom)</div>
         <div class="panel-c">
-          <div id="editor-wrap" class="canvas-wrap">
-            <canvas id="editor-canvas"></canvas>
-
-            <!-- LEFT MONOCLE -->
-            <div id="monocle-left" class="monocle"><canvas id="monocle-left-canvas"></canvas></div>
+          <div id="editorWrap" class="canvas-wrap" tabindex="0">
+            <canvas id="editorCanvas"></canvas>
+            <div id="mono-left" class="monocle"><canvas id="monoLeftCanvas"></canvas></div>
           </div>
-          <div id="editor-empty" class="placeholder">Drop an image here or click “Upload”</div>
-
-          <div class="progress-wrap" id="progressEditor"><div class="progress" id="progressBar"></div></div>
+          <div id="edEmpty" class="chip" style="position:absolute;pointer-events:none;">Drop or upload an image</div>
+          <div class="progress-wrap" id="progWrap"><div class="progress" id="progBar"></div></div>
         </div>
       </section>
 
       <!-- PREVIEW -->
-      <section class="panel" id="preview-panel">
-        <div class="panel-h">LIVE PREVIEW</div>
-        <div class="panel-c" id="preview-container">
-          <div id="preview-wrap" class="canvas-wrap">
-            <canvas id="preview-canvas"></canvas>
-
-            <!-- RIGHT MONOCLE -->
-            <div id="monocle-right" class="monocle"><canvas id="monocle-right-canvas"></canvas></div>
+      <section class="panel">
+        <div class="panel-h">PREVIEW — Color Splash (multi-method)</div>
+        <div class="panel-c" id="previewContainer">
+          <div id="previewWrap" class="canvas-wrap">
+            <canvas id="previewCanvas"></canvas>
+            <div id="mono-right" class="monocle"><canvas id="monoRightCanvas"></canvas></div>
           </div>
-          <div id="preview-empty" class="placeholder">Your result will appear here</div>
-
-          <!-- AI outputs (plots BEFORE the effect is applied) -->
-          <div id="aiOutputs" class="ai-outputs">
+          <!-- AI substep thumbnails -->
+          <div id="aiThumbs" class="ai-outputs">
             <div class="ai-plot">
-              <canvas id="aiMaskThumb"></canvas>
-              <div class="cap">AI Object Mask</div>
+              <canvas id="maskThumb"></canvas>
+              <div class="cap">Final Mask</div>
             </div>
             <div class="ai-plot">
-              <canvas id="aiDepthThumb"></canvas>
+              <canvas id="depthThumb"></canvas>
               <div class="cap">Depth Map</div>
             </div>
           </div>
         </div>
       </section>
     </div>
-
-    <div class="bottom">
-      <!-- PRESETS -->
-      <section class="presets panel">
-        <div class="panel-h">PRESET GALLERY (click to apply)</div>
-        <div id="presets" class="presets-grid"></div>
-      </section>
-
-      <!-- SETTINGS + LOGS (original compact log) -->
-      <section class="side panel">
-        <div class="side-c">
-          <div class="settings">
-            <div class="set-row">
-              <strong>Settings</strong>
-              <button id="toggleLogsBtn" style="margin-left:auto">📝 Toggle Logs</button>
-            </div>
-            <div class="set-row">
-              <label for="aggrRange">Feather</label>
-              <input type="range" id="aggrRange" min="0" max="100" value="35"/>
-              <span id="aggrVal">35</span>
-            </div>
-            <div class="set-row">
-              <label for="tolRange">Tolerance (Auto tools)</label>
-              <input type="range" id="tolRange" min="0" max="100" value="25"/>
-              <span id="tolVal">25</span>
-            </div>
-            <div class="set-row">
-              <label for="fltRange">Filter Strength</label>
-              <input type="range" id="fltRange" min="0" max="100" value="100"/>
-              <span id="fltVal">100%</span>
-            </div>
-          </div>
-          <div class="logs">
-            <div class="log-header">
-              <div><strong>Developer Log</strong></div>
-              <div><button id="clearLogsBtn">Clear</button></div>
-            </div>
-            <div id="logBody" class="log-body"></div>
-          </div>
-        </div>
-      </section>
-    </div>
   </div>
 
-  <!-- FAB + AI Settings/Logs panel -->
-  <button id="aiFab" title="AI Logs & Settings">💬 AI</button>
-  <div id="aiPanel">
-    <header>
-      <strong>🤖 AI Logs & Settings</strong>
-    </header>
-    <div class="body">
-      <div class="cfg">
-        <div class="row">
-          <span class="chip">Runtime</span>
-          <span id="aiRuntimeChip" class="chip">—</span>
-        </div>
-        <div class="row">
-          <label>Refine with Fancy Math</label>
-          <input id="aiRefine2" type="checkbox"/>
-        </div>
-        <div class="row">
-          <small style="color:#64748b">Tip: Select models in the header AI bar. Preloading starts when you select.</small>
-        </div>
+  <!-- LOGS -->
+  <button id="logFab">💬 Logs</button>
+  <div id="logsPanel">
+    <div id="logsHeader">AI Logs & Model Manager</div>
+    <div id="logsHelp">
+      <div style="margin-bottom:.25rem">
+        Use your GitHub <b>Releases</b> or <b>Dropbox DIRECT</b> links for cross-origin fetches with CORS.<br/>
+        Or mirror models to <code>/models/</code> (same-origin). You can also import ONNX files or URLs (cached in <b>IndexedDB</b>).
       </div>
-
-      <!-- NEW: download rows + clear cache -->
-      <div class="cfg">
-        <div class="row"><strong>Model Downloads</strong></div>
-        <div id="aiDownloadRows"></div>
-        <div class="row">
-          <button id="clearCacheBtn" class="danger">🧹 Clear AI model cache</button>
-          <small class="dl-meta">Deletes cached ONNX files from your browser to reclaim space.</small>
-        </div>
-      </div>
-
-      <div id="aiLogBody" class="ilog"></div>
+      <div>If a link fails with CORS/401/403, use the local upload option or host on same-origin.</div>
+    </div>
+    <div id="logsBody"></div>
+    <div id="logsFooter">
+      <button id="clearBtn">Clear Logs</button>
+      <button id="clearCacheBtn">Clear Cached Models</button>
+      <button id="selfTestBtn">Self-Test Links</button>
     </div>
   </div>
 
   <!-- hidden inputs -->
-  <input type="file" id="fileInput" accept="image/*" class="hidden"/>
-  <input type="file" id="loadInput" accept=".json,.txt" class="hidden"/>
+  <input id="imgInput" class="hidden" type="file" accept="image/*"/>
+  <input id="segInput" class="hidden" type="file" accept=".onnx"/>
+  <input id="depthInput" class="hidden" type="file" accept=".onnx"/>
 
-  <!-- Worker source (embedded); unchanged core, still available as fallback/refine engine -->
-  <script id="seg-worker-src" type="text/plain">
-/* seg-worker.js — minimal, fast, and deterministic */
-self.postMessage({type:'ready'});
+<script>
+(function(){
+  'use strict';
 
-self.onmessage = (e)=>{
-  const {type, payload, reqId} = e.data || {};
-  if(type!=='segment') return;
-  try{
-    const {tool, seedX, seedY, tol01, aggr, width, height, image} = payload;
-    const data = image.data; // Uint8ClampedArray transferred
+  // ---------------- Meta ----------------
+  const APP_VERSION = '2.5.0';
+  id('verBadge').textContent = APP_VERSION;
+  id('verPin').textContent = APP_VERSION;
 
-    // Build grayscale for gradients
-    const N = width*height;
-    const gray = new Float32Array(N);
-    for(let i=0,j=0;i<N;i++,j+=4){
-      gray[i] = 0.2126*data[j] + 0.7152*data[j+1] + 0.0722*data[j+2];
-    }
-    const grad = sobelMag(gray, width, height);
-    const gradN = normalize01(grad);
+  // ---------------- DOM ----------------
+  const dom = {
+    uploadBtn: id('uploadBtn'),
+    resetBtn: id('resetBtn'),
+    downloadBtn: id('downloadBtn'),
+    aiToggleBtn: id('aiToggleBtn'),
+    addJsonBtn: id('addJsonBtn'),
 
-    let alpha;
-    if(tool==='autoSmart'){ // EdgeGrow
-      const params = defaultsEdgeGrow(tol01, aggr);
-      alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
-      returnMask(alpha, width, height, {tool:'edgeGrow', seedX, seedY, params}, reqId);
-    } else if(tool==='autoUltra'){ // GrabCut-lite (fallback to color-strong EdgeGrow if EM/mincut too heavy)
-      const params = defaultsEdgeGrow(Math.min(1, tol01*1.1+0.05), aggr+10);
-      alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
-      paintDisk(alpha, width, height, seedX, seedY, Math.max(6, Math.round(Math.min(width,height)*0.01)), 255);
-      returnMask(alpha, width, height, {tool:'grabcutLite', seedX, seedY, params}, reqId);
-    } else if(tool==='autoObjects') {
-      const params = defaultsEdgeGrow(tol01, aggr);
-      alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
-      returnMask(alpha, width, height, {tool:'edgeGrow', seedX, seedY, params, auto:true}, reqId);
-    } else {
-      const params = defaultsEdgeGrow(tol01, aggr);
-      alpha = edgeAwareGrowMask(data, width, height, seedX, seedY, gradN, params);
-      returnMask(alpha, width, height, {tool:'edgeGrow', seedX, seedY, params}, reqId);
-    }
-  }catch(err){
-    self.postMessage({type:'error', reqId, payload:String(err)});
-  }
-};
+    aiBar: id('aiBar'),
+    segSel: id('segSel'),
+    depthSel: id('depthSel'),
+    refineChk: id('refineChk'),
+    effectSel: id('effectSel'),
+    bandRange: id('bandRange'),
+    depthThrRange: id('depthThrRange'),
+    edgeThrRange: id('edgeThrRange'),
+    featherPx: id('featherPx'),
+    useBtn: id('useBtn'),
+    aiStatus: id('aiStatus'),
 
-// ----- utils -----
-function normalize01(arr){
-  let mn=Infinity,mx=-Infinity; for(const v of arr){ if(v<mn) mn=v; if(v>mx) mx=v; }
-  const out=new Float32Array(arr.length); const d=mx-mn||1;
-  for(let i=0;i<arr.length;i++) out[i]=(arr[i]-mn)/d;
-  return out;
-}
-function sobelMag(gray,W,H){
-  const out=new Float32Array(W*H);
-  for(let y=1;y<H-1;y++){
-    for(let x=1;x<W-1;x++){
-      const i=y*W+x;
-      const tl=(y-1)*W+(x-1), t=(y-1)*W+x, tr=(y-1)*W+(x+1);
-      const ml=y*W+(x-1), mr=y*W+(x+1);
-      const bl=(y+1)*W+(x-1), b=(y+1)*W+x, br=(y+1)*W+(x+1);
-      const gx = -gray[tl]-2*gray[ml]-gray[bl] + gray[tr]+2*gray[mr]+gray[br];
-      const gy = -gray[tl]-2*gray[t]-gray[tr] + gray[bl]+2*gray[b]+gray[br];
-      out[i] = Math.hypot(gx,gy);
-    }
-  }
-  return out;
-}
+    editorWrap: id('editorWrap'),
+    editorCanvas: id('editorCanvas'),
+    edEmpty: id('edEmpty'),
+    previewContainer: id('previewContainer'),
+    previewWrap: id('previewWrap'),
+    previewCanvas: id('previewCanvas'),
 
-function defaultsEdgeGrow(tol01, aggr){
-  return {
-    wc: 1.0,
-    we: 2.0 + 1.2*tol01,
-    wd: 0.02,
-    tau: 18 + 160*tol01 + aggr*0.6,
-    diag: true
+    progWrap: id('progWrap'),
+    progBar: id('progBar'),
+
+    monoLeft: id('mono-left'),
+    monoRight: id('mono-right'),
+    monoLeftCanvas: id('monoLeftCanvas'),
+    monoRightCanvas: id('monoRightCanvas'),
+
+    aiThumbs: id('aiThumbs'),
+    maskThumb: id('maskThumb'),
+    depthThumb: id('depthThumb'),
+
+    logFab: id('logFab'),
+    logsPanel: id('logsPanel'),
+    logsBody: id('logsBody'),
+    clearBtn: id('clearBtn'),
+    clearCacheBtn: id('clearCacheBtn'),
+    selfTestBtn: id('selfTestBtn'),
+
+    imgInput: id('imgInput'),
+    segInput: id('segInput'),
+    depthInput: id('depthInput'),
   };
-}
-function edgeAwareGrowMask(rgbU8, W, H, sx, sy, grad01, p){
-  const idx = (x,y)=> y*W + x;
-  const N = W*H;
-  const cost = new Float32Array(N); cost.fill(1e20);
-  const seen = new Uint8Array(N);
-  const heapCost = new Float32Array(N); const heapIdx = new Int32Array(N); let heapSize=0;
-  function heapPush(c, i){
-    let k = heapSize++; heapCost[k]=c; heapIdx[k]=i;
-    while(k){ const pK=(k-1)>>1; if(heapCost[pK]<=c) break; swap(k,pK); k=pK; }
-  }
-  function heapPop(){
-    if(!heapSize) return [-1,-1];
-    const c=heapCost[0], i=heapIdx[0];
-    const ck=heapCost[--heapSize], ik=heapIdx[heapSize];
-    if(heapSize){ heapCost[0]=ck; heapIdx[0]=ik; down(0); }
-    return [c,i];
-  }
-  function swap(a,b){ const tc=heapCost[a]; heapCost[a]=heapCost[b]; heapCost[b]=tc; const ti=heapIdx[a]; heapIdx[a]=heapIdx[b]; }
-  function down(k){
-    for(;;){
-      let l=k*2+1, r=l+1, s=k;
-      if(l<heapSize && heapCost[l]<heapCost[s]) s=l;
-      if(r<heapSize && heapCost[r]<heapCost[s]) s=r;
-      if(s===k) break; swap(k,s); k=s;
-    }
-  }
 
-  const R = new Float32Array(N), G = new Float32Array(N), B = new Float32Array(N);
-  for(let i=0,j=0;i<N;i++,j+=4){ R[i]=rgbU8[j]; G[i]=rgbU8[j+1]; B[i]=rgbU8[j+2]; }
+  // ---------------- State ----------------
+  const state = {
+    image: null,
+    ed: { x:0, y:0, s:1, panning:false, panStart:[0,0], tx:0, ty:0 },
+    seed: null,
+    aiActive: false,
+    segKey: 'edgegrow',    // 'edgegrow' = built-in fallback (no model)
+    depthKey: 'none',      // 'none' = no depth
+    refine: false,
+    effect: 'seg',
+    sessions: {},          // { key : ort.InferenceSession }
+    cachedBuffers: {},     // { key : Uint8Array } (from IDB or fetch)
+    maskCanvas: null,      // final mask used in preview
+    depthCanvas: null,     // depth viz
+    depthMap: null,        // Float32Array normalized [0..1]
+    models: {}             // dynamic registry (filled below)
+  };
 
-  const seed = idx(Math.max(0,Math.min(W-1,sx)), Math.max(0,Math.min(H-1,sy)));
-  cost[seed]=0; heapPush(0, seed);
-
-  const deltas = p.diag ? [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]] : [[1,0],[-1,0],[0,1],[0,-1]];
-
-  while(heapSize){
-    const popped = heapPop(); const c = popped[0], i = popped[1];
-    if(i<0) break; if(seen[i]) continue; seen[i]=1;
-    if(c>p.tau) break;
-
-    const x=i%W, y=(i-x)/W;
-    for(const d of deltas){
-      const nx=x+d[0], ny=y+d[1];
-      if(nx<0||ny<0||nx>=W||ny>=H) continue;
-      const j = idx(nx,ny); if(seen[j]) continue;
-
-      const dR = R[i]-R[j], dG = G[i]-G[j], dB = B[i]-B[i+2];
-      const dE = Math.hypot(dR,dG,dB);
-      const eStop = 1.0 - (grad01[j]/(grad01[j]+1e-6));
-      const step = 1.0*dE + (2.0+1.2)*eStop + 0.02*((d[0]&&d[1])?Math.SQRT2:1.0);
-      const nc = c + step;
-      if(nc < cost[j] && nc <= p.tau){ cost[j]=nc; heapPush(nc,j); }
-    }
+  // ---------------- Logs ----------------
+  function log(...args){
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.textContent = `[${new Date().toLocaleTimeString()}] ` + args.join(' ');
+    dom.logsBody.appendChild(line);
+    dom.logsBody.scrollTop = dom.logsBody.scrollHeight;
+    console.debug(...args);
   }
 
-  const alpha = new Uint8ClampedArray(N);
-  const t0 = 0.92*p.tau, t1 = p.tau;
-  for(let i=0;i<N;i++){
-    const ci = cost[i];
-    if(ci>=1e18){ alpha[i]=0; continue; }
-    if(ci<=t0){ alpha[i]=255; }
-    else if(ci>=t1){ alpha[i]=0; }
-    else { const a = 1 - (ci - t0)/(t1 - t0); alpha[i] = Math.round(255*a); }
+  // ---------------- Helpers ----------------
+  function id(s){ return document.getElementById(s); }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+  async function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  // ---------------- Progress ----------------
+  let progTimer=null, progTarget=85;
+  function startProgress(){
+    dom.progWrap.classList.add('visible');
+    dom.progBar.style.width = '0%';
+    let p=0;
+    clearInterval(progTimer);
+    progTimer = setInterval(()=>{
+      p = Math.min(p + 10, progTarget);
+      dom.progBar.style.width = p + '%';
+    }, 80);
   }
-  return alpha;
-}
-function paintDisk(alpha, W,H, cx,cy, r, v){
-  const r2=r*r;
-  for(let y=Math.max(0,cy-r); y<Math.min(H,cy+r+1); y++){
-    for(let x=Math.max(0,cx-r); x<Math.min(W,cx+r+1); x++){
-      const dx=x-cx, dy=y-cy; if(dx*dx+dy*dy<=r2){ alpha[y*W+x]=v; }
-    }
+  function finishProgress(){
+    clearInterval(progTimer);
+    progTimer = null;
+    dom.progBar.style.width = '100%';
+    setTimeout(()=>{ dom.progWrap.classList.remove('visible'); dom.progBar.style.width='0%'; }, 240);
   }
-}
-function returnMask(alphaU8, width, height, generator, reqId){
-  self.postMessage({type:'mask', reqId, payload:{width,height,alphaU8,generator}}, [alphaU8.buffer]);
-}
-  </script>
 
-  <script>
-  (function(){
-    'use strict';
-
-    // -------------------------- META / VERSION --------------------------
-    const APP_VERSION = "1.19.0";
-    document.getElementById('versionBadge').textContent = APP_VERSION;
-    document.getElementById('versionPin').textContent = APP_VERSION;
-
-    // -------------------------- DOM --------------------------
-    const $ = (id)=>document.getElementById(id);
-    const dom = {
-      // Top bar
-      uploadBtn: $('uploadBtn'), saveBtn: $('saveBtn'), loadBtn: $('loadBtn'), startOverBtn: $('startOverBtn'),
-      undoBtn: $('undoBtn'), redoBtn: $('redoBtn'),
-      modeLassoBtn: $('modeLassoBtn'), newLassoBtn: $('newLassoBtn'), modeBoxBtn: $('modeBoxBtn'),
-      deleteSelectionBtn: $('deleteSelectionBtn'), renderNowBtn: $('renderNowBtn'),
-      autoWandBtn: $('autoWandBtn'), autoSmartBtn: $('autoSmartBtn'), autoUltraBtn: $('autoUltraBtn'), autoObjectsBtn: $('autoObjectsBtn'),
-      protectEraserBtn: $('protectEraserBtn'), removeEraserBtn: $('removeEraserBtn'),
-      resetViewBtn: $('resetViewBtn'), downloadBtn: $('downloadBtn'),
-      aiModeBtn: $('aiModeBtn'),
-
-      // AI bar
-      aiBar: $('aiBar'), aiSegModel: $('aiSegModel'), aiDepthModel: $('aiDepthModel'),
-      aiRefine: $('aiRefine'), aiUseBtn: $('aiUseBtn'), aiStatus: $('aiStatus'),
-
-      // Editor / Preview
-      fileInput: $('fileInput'), loadInput: $('loadInput'),
-      editorPanel: $('editor-panel'), editorWrap: $('editor-wrap'), editorCanvas: $('editor-canvas'), editorEmpty: $('editor-empty'),
-      previewPanel: $('preview-panel'), previewWrap: $('preview-wrap'), previewContainer: $('preview-container'), previewCanvas: $('preview-canvas'), previewEmpty: $('preview-empty'),
-
-      // Dual monocles
-      monocleLeft: $('monocle-left'), monoLeftCanvas: $('monocle-left-canvas'),
-      monocleRight: $('monocle-right'), monoRightCanvas: $('monocle-right-canvas'),
-
-      // AI outputs (thumbs)
-      aiOutputs: $('aiOutputs'), aiMaskThumb: $('aiMaskThumb'), aiDepthThumb: $('aiDepthThumb'),
-
-      // Presets
-      presets: $('presets'),
-
-      // Progress
-      progressWrap: $('progressEditor'), progressBar: $('progressBar'),
-
-      // Settings + Logs (original)
-      aggrRange: $('aggrRange'), aggrVal: $('aggrVal'),
-      tolRange: $('tolRange'), tolVal: $('tolVal'),
-      fltRange: $('fltRange'), fltVal: $('fltVal'),
-      toggleLogsBtn: $('toggleLogsBtn'), clearLogsBtn: $('clearLogsBtn'), logBody: $('logBody'),
-
-      // AI panel / FAB
-      aiFab: $('aiFab'), aiPanel: $('aiPanel'), aiLogBody: $('aiLogBody'), aiRuntimeChip: $('aiRuntimeChip'),
-      aiRefine2: $('aiRefine2'),
-
-      // NEW: download rows + cache clear
-      aiDownloadRows: $('aiDownloadRows'), clearCacheBtn: $('clearCacheBtn')
-    };
-
-    // -------------------------- UTIL --------------------------
-    const log = (...args)=> {
-      const line = document.createElement('div');
-      line.className='log-line';
-      line.textContent = `[${new Date().toLocaleTimeString()}] ` + args.join(' ');
-      dom.logBody.appendChild(line);
-      dom.logBody.scrollTop = dom.logBody.scrollHeight;
-
-      // mirror a subset into AI panel
-      const l2 = document.createElement('div');
-      l2.className = 'line';
-      l2.textContent = line.textContent;
-      dom.aiLogBody.appendChild(l2);
-      dom.aiLogBody.scrollTop = dom.aiLogBody.scrollHeight;
-    };
-    const clamp = (v, a, b)=>Math.max(a, Math.min(b, v));
-    const debounce = (fn, ms)=>{ let t; return (...a)=>{ clearTimeout(t); t = setTimeout(()=>fn(...a), ms); }; };
-    const now = ()=>performance.now();
-    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-
-    // -------------------------- STATE --------------------------
-    const state = {
-      image: null,
-      selections: [], // box | lasso | mask | protect
-      activeIndex: -1,
-      mode: 'lasso',          // drawing tool
-      modeGroup: 'manual',    // 'manual' | 'ai'  (affects recompute behavior)
-      transform: {x:0,y:0,scale:1}, // editor transform
-      isPanning: false,
-      drag: { active:false, startX:0,startY:0, kind:null, handle:null, moved:false, snapshot:null },
-      history: [], histIndex: -1,
-      activePreset: 0,
-      filters: [
-        {name:'Classic',   css:(s)=>`grayscale(${s}%)`,                                                aggr:20},
-        {name:'High Pop',  css:(s)=>`grayscale(${s}%) contrast(1.35) brightness(1.05)`,                aggr:30},
-        {name:'Soft Film', css:(s)=>`grayscale(${s}%) brightness(1.03) contrast(1.08) saturate(.9)`,   aggr:35},
-        {name:'Crunchy',   css:(s)=>`grayscale(${s}%) contrast(1.55)`,                                 aggr:45},
-        {name:'Dreamy',    css:(s)=>`grayscale(${s}%) blur(0.6px) brightness(1.06)`,                   aggr:60},
-        {name:'Neutral',   css:(s)=>`grayscale(${s}%) brightness(1.02)`,                               aggr:25}
-      ],
-      aggr: 35, tol: 25, filtStrength: 100,
-      rendering: false,
-      brush: {size: 28, hard: 0.9},
-      thumbnailsReady: false,
-
-      // AI
-      ai: {
-        active: false,
-        segModel: 'yolov8n-seg',
-        depthModel: 'mobiledepth',
-        refine: false,
-        lastClick: null,    // {x,y} in image coords
-        sessions: {},       // { key : ort.InferenceSession }
-        preloading: {},     // { key : true/false }
-        downloading: {},    // { key : {loaded,total,percent,status,error,attempt} }
-        outputs: {
-          rawMask: null,    // Uint8Clamped alpha (full-res) or canvas
-          finalMask: null,  // canvas
-          depth: null,      // Float32Array (full-res) or canvas
-          depthCanvas: null,
-          maskCanvas: null
-        }
-      }
-    };
-
-    // -------------------------- MODEL REGISTRY (URLs + FALLBACKS) --------------------------
-    // NOTE: You can add more mirrors for each model in `urls`. First working URL wins.
-    const MODEL_URLS = {
-      // Segmentation (ONNX)
-      'yolov8n-seg': {
-        urls: [
-          'https://huggingface.co/onnx-community/ultralytics-yolov8/resolve/main/yolov8n-seg.onnx',
-          'https://cdn.jsdelivr.net/gh/onnx/models/vision/object_detection_segmentation/yolov8/yolov8n-seg.onnx'
-        ],
-        url: 'https://huggingface.co/onnx-community/ultralytics-yolov8/resolve/main/yolov8n-seg.onnx',
-        inputName: 'images', type:'seg-yolo', sizeHintMB: 13.2, inputSize: 640, label: 'YOLOv8n-seg'
-      },
-      'yolo11n-seg': {
-        urls: [
-          'https://huggingface.co/keremberke/yolo11n-seg-onnx/resolve/main/model.onnx',
-          'https://huggingface.co/ai-forever/yolo11n-seg-onnx/resolve/main/model.onnx'
-        ],
-        url: 'https://huggingface.co/keremberke/yolo11n-seg-onnx/resolve/main/model.onnx',
-        inputName: 'images', type:'seg-yolo', sizeHintMB: 6.0, inputSize: 640, label: 'YOLO11n-seg'
-      },
-      'mobile-sam': {
-        urls: [
-          'https://huggingface.co/ziqiangxu/MobileSAM-onnx/resolve/main/mobile_sam.onnx',
-          'https://huggingface.co/dvlab-research/segment-anything/resolve/main/mobile_sam.onnx'
-        ],
-        url: 'https://huggingface.co/ziqiangxu/MobileSAM-onnx/resolve/main/mobile_sam.onnx',
-        inputName: 'input_image', type:'seg-sam', sizeHintMB: 50.3, inputSize: 512, label: 'MobileSAM'
-      },
-      'fastsam-s': {
-        urls: [
-          'https://huggingface.co/ultralytics/FastSAM/resolve/main/FastSAM-s.onnx',
-          'https://huggingface.co/yxlu-0101/FastSAM-ONNX/resolve/main/FastSAM-s.onnx'
-        ],
-        url: 'https://huggingface.co/ultralytics/FastSAM/resolve/main/FastSAM-s.onnx',
-        inputName: 'images', type:'seg-yolo', sizeHintMB: 23.0, inputSize: 640, label: 'FastSAM-S'
-      },
-
-      // Depth
-      'mobiledepth': {
-        urls: [
-          'https://huggingface.co/apple/ml-depth-pro/resolve/main/mobiledepth_tiny.onnx'
-        ],
-        url: 'https://huggingface.co/apple/ml-depth-pro/resolve/main/mobiledepth_tiny.onnx',
-        inputName: 'input', type:'depth', sizeHintMB: 1.4, inputSize: 256, label: 'MobileDepth'
-      },
-      'midas-small': {
-        urls: [
-          'https://huggingface.co/onnx-community/MiDaS/resolve/main/midas_small.onnx',
-          'https://raw.githubusercontent.com/isl-org/MiDaS/master/weights/midas_small.onnx'
-        ],
-        url: 'https://huggingface.co/onnx-community/MiDaS/resolve/main/midas_small.onnx',
-        inputName: 'input', type:'depth', sizeHintMB: 63.0, inputSize: 256, label: 'MiDaS-small'
-      },
-      'da-v2-small': {
-        urls: [
-          'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_small.onnx'
-        ],
-        url: 'https://huggingface.co/depth-anything/Depth-Anything-V2-Small/resolve/main/depth_anything_v2_small.onnx',
-        inputName: 'input', type:'depth', sizeHintMB: 99.0, inputSize: 518, label: 'Depth Anything V2 Small'
-      }
-    };
-
-    // -------------------------- INDEXEDDB CACHE --------------------------
-    const DB_NAME = 'cspx-models';
-    const DB_STORE = 'models';
-    let dbPromise = null;
-
-    function openDB(){
-      if(dbPromise) return dbPromise;
-      dbPromise = new Promise((resolve, reject)=>{
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = (e)=>{
-          const db = req.result;
-          if(!db.objectStoreNames.contains(DB_STORE)){
-            db.createObjectStore(DB_STORE, { keyPath: 'key' });
-          }
-        };
-        req.onsuccess = ()=> resolve(req.result);
-        req.onerror = ()=> reject(req.error);
-      });
-      return dbPromise;
-    }
-    async function idbGet(key){
-      try{
-        const db = await openDB();
-        return await new Promise((res,rej)=>{
-          const tx = db.transaction(DB_STORE,'readonly');
-          const store = tx.objectStore(DB_STORE);
-          const r = store.get(key);
-          r.onsuccess = ()=> res(r.result || null);
-          r.onerror = ()=> rej(r.error);
-        });
-      }catch{ return null; }
-    }
-    async function idbPut(record){
-      try{
-        const db = await openDB();
-        return await new Promise((res,rej)=>{
-          const tx = db.transaction(DB_STORE,'readwrite');
-          const store = tx.objectStore(DB_STORE);
-          const r = store.put(record);
-          r.onsuccess = ()=> res(true);
-          r.onerror = ()=> rej(r.error);
-        });
-      }catch{ return false; }
-    }
-    async function idbClear(){
-      try{
-        const db = await openDB();
-        return await new Promise((res,rej)=>{
-          const tx = db.transaction(DB_STORE,'readwrite');
-          const store = tx.objectStore(DB_STORE);
-          const r = store.clear();
-          r.onsuccess = ()=> res(true);
-          r.onerror = ()=> rej(r.error);
-        });
-      }catch{ return false; }
-    }
-
-    function cacheKeyForModel(key){
-      // Tie cache to app version to avoid stale incompatibilities
-      return `${APP_VERSION}:${key}`;
-    }
-
-    // -------------------------- DOWNLOAD PROGRESS UI --------------------------
-    function ensureDlRow(key){
-      const id = `dl-${key}`;
-      let row = document.getElementById(id);
-      if(row) return row;
-      row = document.createElement('div');
-      row.className = 'dl-row';
-      row.id = id;
-      row.innerHTML = `
-        <div class="dl-meta"><strong>${MODEL_URLS[key]?.label || key}</strong> <span id="${id}-status" class="dl-meta">—</span></div>
-        <div class="mini-progress"><div id="${id}-bar" class="mini-bar"></div></div>
-      `;
-      dom.aiDownloadRows.appendChild(row);
-      return row;
-    }
-    function setDlStatus(key, text){
-      const el = document.getElementById(`dl-${key}-status`) || ensureDlRow(key).querySelector(`#dl-${key}-status`);
-      if(el) el.textContent = text;
-    }
-    function setDlPercent(key, pct){
-      const bar = document.getElementById(`dl-${key}-bar`) || ensureDlRow(key).querySelector(`#dl-${key}-bar`);
-      if(bar) bar.style.width = clamp(pct,0,100) + '%';
-    }
-
-    // -------------------------- FETCH WITH PROGRESS + FALLBACKS --------------------------
-    async function fetchWithProgress(url, key){
-      setDlStatus(key, `downloading…`);
-      const ctrl = new AbortController();
-      const res = await fetch(url, {signal: ctrl.signal, mode:'cors'});
-      if(!res.ok) throw new Error(`HTTP ${res.status}`);
-      const total = Number(res.headers.get('Content-Length')) || 0;
-      const reader = res.body.getReader();
-      const chunks = [];
-      let loaded = 0, lastPct = 0;
-      for(;;){
-        const {done, value} = await reader.read();
-        if(done) break;
-        chunks.push(value);
-        loaded += value.byteLength;
-        if(total){
-          const pct = Math.floor(loaded/total*100);
-          if(pct!==lastPct){
-            lastPct = pct;
-            state.ai.downloading[key] = {loaded,total,percent:pct,status:'downloading'};
-            setDlPercent(key, pct);
-          }
-        }else{
-          // unknown total; animate a bit
-          const pct = Math.min(95, lastPct + 1);
-          lastPct = pct;
-          setDlPercent(key, pct);
-        }
-      }
-      const blob = new Blob(chunks);
-      const buf = await blob.arrayBuffer();
-      setDlPercent(key, 100);
-      state.ai.downloading[key] = {loaded:buf.byteLength,total:buf.byteLength,percent:100,status:'done'};
-      return buf;
-    }
-
-    async function downloadModelBinary(key){
-      const entry = MODEL_URLS[key];
-      if(!entry) throw new Error('Unknown model key: '+key);
-      const urls = entry.urls && entry.urls.length ? entry.urls : [entry.url];
-
-      // Try cache first
-      const ck = cacheKeyForModel(key);
-      const cached = await idbGet(ck);
-      if(cached && cached.data){
-        setDlStatus(key, `cached (${byteFmt(cached.size)})`);
-        setDlPercent(key, 100);
-        log(`AI: Cache hit for ${key} (${byteFmt(cached.size)}).`);
-        return cached.data;
-      }
-
-      // else download with fallbacks
-      setDlPercent(key, 0);
-      let lastErr = null;
-      for(let i=0;i<urls.length;i++){
-        const u = urls[i];
-        try{
-          log(`AI: Fetching ${key} [${i+1}/${urls.length}] → ${u}`);
-          setDlStatus(key, `downloading [${i+1}/${urls.length}]…`);
-          const buf = await fetchWithProgress(u, key);
-          log(`AI: Downloaded ${key} (${byteFmt(buf.byteLength)}). Saving to cache…`);
-          await idbPut({ key: ck, data: buf, size: buf.byteLength, ts: Date.now(), url: u });
-          setDlStatus(key, `ready (cached)`);
-          return buf;
-        }catch(err){
-          lastErr = err;
-          log(`AI: Failed ${key} from ${u}: ${String(err)}`);
-          setDlStatus(key, `retrying… (${i+1}/${urls.length})`);
-          await sleep(200);
-        }
-      }
-      setDlStatus(key, `error`);
-      const row = ensureDlRow(key);
-      const warn = document.createElement('div'); warn.className='dl-error'; warn.textContent = `Download failed for ${key}. Will let ORT try URL directly as fallback.`;
-      row.appendChild(warn);
-      throw lastErr || new Error('Download failed');
-    }
-
-    function byteFmt(n){
-      if(n<1024) return n+' B';
-      if(n<1024*1024) return (n/1024).toFixed(1)+' KB';
-      return (n/1024/1024).toFixed(1)+' MB';
-    }
-
-    // -------------------------- SEGMENTATION WORKER --------------------------
-    let segWorker = null, segReady=false;
-    function initSegWorker(){
-      if(segWorker) return;
-      try{
-        const src = document.getElementById('seg-worker-src').textContent;
-        const blob = new Blob([src], {type:'application/javascript'});
-        const url = URL.createObjectURL(blob);
-        segWorker = new Worker(url);
-        segWorker.onmessage = (e)=>{
-          const {type, payload, reqId} = e.data || {};
-          if(type==='ready'){ segReady=true; log('Seg Worker ready.'); return; }
-          if(type==='log'){ log(payload); return; }
-          if(type==='error'){ log('Worker error:', payload); finishProgress(); return; }
-          if(type==='mask'){
-            const cnv = document.createElement('canvas');
-            cnv.width = payload.width; cnv.height = payload.height;
-            const ctx = cnv.getContext('2d');
-            const id = ctx.createImageData(payload.width, payload.height);
-            for(let i=0,j=0;i<id.data.length;i+=4,j++){
-              id.data[i]=255; id.data[i+1]=255; id.data[i+2]=255; id.data[i+3]=payload.alphaU8[j];
-            }
-            ctx.putImageData(id,0,0);
-
-            state.selections.push({ type:'mask', maskCanvas: cnv, generator: {...payload.generator, origin:'worker'} });
-            state.activeIndex = state.selections.length-1;
-            editor.draw(); schedulePreviewRender(true); history.save();
-            finishProgress();
-            log('Seg mask added:', payload.generator?.tool || '');
-          }
-        };
-      }catch(err){
-        log('Failed to init worker, will fallback:', String(err));
-      }
-    }
-
-    function requestSegMask(tool, seedX, seedY, tol, aggr){
-      return new Promise((resolve)=>{
-        const W = state.image.width, H = state.image.height;
-        const tmp = document.createElement('canvas'); tmp.width=W; tmp.height=H;
-        const tx = tmp.getContext('2d'); tx.drawImage(state.image,0,0);
-        const imgData = tx.getImageData(0,0,W,H);
-        const reqId = Math.random().toString(36).slice(2);
-        segWorker.postMessage({
-          type:'segment', reqId,
-          payload:{ tool, seedX, seedY, tol01: clamp(tol/100,0,1), aggr, width:W, height:H, image: imgData }
-        }, [imgData.data.buffer]);
-        resolve();
-      });
-    }
-
-    // -------------------------- EDITOR --------------------------
-    const editor = {
-      c: dom.editorCanvas,
-      ctx: dom.editorCanvas.getContext('2d'),
-      updateSize(){
-        const w = dom.editorWrap.clientWidth, h = dom.editorWrap.clientHeight;
-        this.c.width = w; this.c.height = h;
-      },
-      imgToCanvasSpace(clientX, clientY){
-        const r = this.c.getBoundingClientRect();
-        const x = (clientX - r.left - state.transform.x)/state.transform.scale;
-        const y = (clientY - r.top - state.transform.y)/state.transform.scale;
-        return {x,y};
-      },
-      draw(){
-        if(!state.image){
-          this.ctx.clearRect(0,0,this.c.width,this.c.height); return;
-        }
-        const {ctx,c} = this;
-        ctx.clearRect(0,0,c.width,c.height);
-        ctx.save();
-        ctx.translate(state.transform.x, state.transform.y);
-        ctx.scale(state.transform.scale, state.transform.scale);
-        ctx.drawImage(state.image, 0, 0);
-
-        // overlays
-        state.selections.forEach((sel,i)=>{
-          const active = i===state.activeIndex;
-          ctx.save();
-          ctx.lineWidth = active ? 2.5 / state.transform.scale : 1.5 / state.transform.scale;
-          ctx.strokeStyle = active ? '#1877f2' : 'rgba(0,0,0,.45)';
-          ctx.fillStyle = active ? 'rgba(24,119,242,.08)' : 'rgba(255,255,255,.18)';
-          ctx.setLineDash(active ? [] : [6 / state.transform.scale, 4 / state.transform.scale]);
-
-          if(sel.type==='box'){
-            ctx.strokeRect(sel.x, sel.y, sel.w, sel.h);
-            ctx.fillRect(sel.x, sel.y, sel.w, sel.h);
-            if(active) drawBoxHandles(ctx, sel);
-          } else if(sel.type==='lasso'){
-            ctx.beginPath();
-            sel.points.forEach((p,idx)=> idx?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
-            ctx.closePath();
-            ctx.stroke();
-            ctx.fill();
-          } else if((sel.type==='mask' || sel.type==='protect') && sel.maskCanvas){
-            ctx.globalAlpha = active ? 0.25 : 0.15;
-            ctx.drawImage(sel.maskCanvas, 0, 0);
-            ctx.globalAlpha = 1;
-            const edge = edgeFromMask(sel.maskCanvas, 1);
-            if(edge){
-              ctx.save();
-              ctx.strokeStyle = sel.type==='protect' ? '#b00020' : (active ? '#1877f2' : 'rgba(0,0,0,.45)');
-              ctx.lineWidth = active ? 2.0 / state.transform.scale : 1.2 / state.transform.scale;
-              ctx.drawImage(edge, 0, 0);
-              ctx.restore();
-            }
-          }
-          ctx.restore();
-        });
-        ctx.restore();
-      }
-    };
-
-    // -------------------------- PREVIEW --------------------------
-    const preview = {
-      c: dom.previewCanvas,
-      ctx: dom.previewCanvas.getContext('2d'),
-      init(){ /* reserved */ },
-      layout(){
-        if(!state.image){ return; }
-        const rect = dom.previewContainer.getBoundingClientRect();
-        const availW = Math.max(0, rect.width);
-        const availH = Math.max(0, rect.height);
-        const aspect = state.image.width / state.image.height;
-        let w = availW, h = w/aspect;
-        if(h>availH){ h = availH; w = h*aspect; }
-        this.c.width = Math.max(1, Math.round(w));
-        this.c.height = Math.max(1, Math.round(h));
-        dom.previewCanvas.style.left = ((availW - this.c.width)/2) + 'px';
-        dom.previewCanvas.style.top  = ((availH - this.c.height)/2) + 'px';
-      },
-      render(){
-        if(!state.image) return;
-
-        // build composite mask (if AI mode is active and we have a mask, we inject it as a selection-like canvas)
-        const fullMask = buildFullMaskCanvas();
-        const ctx = this.ctx;
-        ctx.clearRect(0,0,this.c.width,this.c.height);
-
-        // background filtered
-        const cssFilter = state.filters[state.activePreset].css(state.filtStrength);
-        ctx.save();
-        ctx.filter = cssFilter;
-        ctx.drawImage(state.image, 0, 0, this.c.width, this.c.height);
-        ctx.restore();
-
-        // colorized via mask
-        const colored = document.createElement('canvas');
-        colored.width = state.image.width; colored.height = state.image.height;
-        const cctx = colored.getContext('2d');
-        cctx.drawImage(state.image,0,0);
-        cctx.globalCompositeOperation = 'destination-in';
-        cctx.drawImage(fullMask,0,0);
-        ctx.drawImage(colored, 0,0, this.c.width, this.c.height);
-      }
-    };
-
-    function buildFullMaskCanvas(){
-      const m = document.createElement('canvas');
-      const W = state.image.width, H = state.image.height;
-      m.width = W; m.height = H;
-      const mctx = m.getContext('2d');
-
-      // base mask (white = colorized)
-      mctx.fillStyle = '#fff';
-      state.selections.forEach(sel=>{
-        if(sel.type==='box'){
-          mctx.fillRect(sel.x, sel.y, sel.w, sel.h);
-        } else if(sel.type==='lasso'){
-          mctx.beginPath();
-          sel.points.forEach((p,i)=> i?mctx.lineTo(p.x,p.y):mctx.moveTo(p.x,p.y));
-          mctx.closePath();
-          mctx.fill();
-        } else if(sel.type==='mask' && sel.maskCanvas){
-          mctx.drawImage(sel.maskCanvas, 0, 0);
-        }
-      });
-
-      // subtract protections
-      state.selections.forEach(sel=>{
-        if(sel.type==='protect' && sel.maskCanvas){
-          mctx.globalCompositeOperation = 'destination-out';
-          mctx.drawImage(sel.maskCanvas, 0, 0);
-          mctx.globalCompositeOperation = 'source-over';
-        }
-      });
-
-      // AI Mode: if we have an AI final mask, draw it on top (as additive mask)
-      if(state.ai.active && state.ai.outputs.finalMask){
-        mctx.drawImage(state.ai.outputs.finalMask, 0, 0);
-      }
-
-      // feather
-      const blurPx = Math.round(clamp(state.aggr,0,100) * 0.22);
-      if(blurPx>0){
-        const tmp = document.createElement('canvas');
-        tmp.width = W; tmp.height = H;
-        const tctx = tmp.getContext('2d');
-        tctx.filter = `blur(${blurPx}px)`; tctx.drawImage(m,0,0);
-        mctx.clearRect(0,0,W,H); mctx.drawImage(tmp,0,0);
-      }
-      return m;
-    }
-
-    // -------------------------- PRESETS (lazy) --------------------------
-    function renderPresets(lazy=false){
-      if(!state.image){
-        dom.presets.innerHTML = '';
-        for(let i=0;i<state.filters.length;i++){
-          const item = document.createElement('div');
-          item.className = 'preset';
-          item.innerHTML = `<canvas width="84" height="60"></canvas><label>${state.filters[i].name}</label>`;
-          dom.presets.appendChild(item);
-        }
-        return;
-      }
-      const doRender = ()=>{
-        dom.presets.innerHTML = '';
-        state.filters.forEach((flt, idx)=>{
-          const item = document.createElement('div');
-          item.className = 'preset' + (idx===state.activePreset?' active':'');
-          item.innerHTML = `<canvas></canvas><label>${flt.name}</label>`;
-          const c = item.querySelector('canvas'), cctx = c.getContext('2d');
-          const aspect = state.image.width/state.image.height;
-          c.width = 84; c.height = Math.max(56, Math.round(84/aspect));
-          cctx.save(); cctx.filter = flt.css(100);
-          cctx.drawImage(state.image, 0,0,c.width,c.height);
-          cctx.restore();
-          item.addEventListener('click', ()=>{
-            state.activePreset = idx;
-            state.aggr = state.filters[idx].aggr;
-            updateSettingsUI();
-            document.querySelectorAll('.preset').forEach(el=>el.classList.remove('active'));
-            item.classList.add('active');
-            schedulePreviewRender(true);
-            log('Preset:', flt.name, 'Feather:', state.aggr);
-          });
-          dom.presets.appendChild(item);
-        });
-        state.thumbnailsReady = true;
-      };
-      if(lazy){
-        state.thumbnailsReady = false;
-        setTimeout(doRender, 700);
-      } else {
-        doRender();
-      }
-    }
-
-    // -------------------------- HISTORY --------------------------
-    const history = {
-      save(){
-        const snapshot = {
-          selections: JSON.parse(JSON.stringify(state.selections, (k,v)=>{
-            if((k==='maskCanvas') && v && v.toDataURL) return v.toDataURL();
-            return v;
-          })),
-          activeIndex: state.activeIndex,
-          transform: {...state.transform},
-          activePreset: state.activePreset,
-          aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength,
-          ai: {
-            active: state.ai.active,
-            segModel: state.ai.segModel,
-            depthModel: state.ai.depthModel,
-            refine: state.ai.refine,
-            lastClick: state.ai.lastClick
-          }
-        };
-        if(state.histIndex < state.history.length-1) state.history = state.history.slice(0,state.histIndex+1);
-        state.history.push(JSON.stringify(snapshot));
-        state.histIndex++;
-        refreshButtons();
-      },
-      load(i){
-        const snap = JSON.parse(state.history[i]);
-        state.selections = (snap.selections||[]).map(s=>{
-          if((s.type==='mask' || s.type==='protect') && s.maskCanvas && typeof s.maskCanvas==='string'){
-            const cnv = dataURLToCanvas(s.maskCanvas);
-            return {...s, maskCanvas: cnv};
-          }
-          return s;
-        });
-        state.activeIndex = snap.activeIndex;
-        state.transform = snap.transform;
-        state.activePreset = snap.activePreset ?? state.activePreset;
-        state.aggr = snap.aggr ?? state.aggr;
-        state.tol = snap.tol ?? state.tol;
-        state.filtStrength = snap.filtStrength ?? state.filtStrength;
-
-        if(snap.ai){
-          state.ai.active = !!snap.ai.active;
-          state.ai.segModel = snap.ai.segModel || state.ai.segModel;
-          state.ai.depthModel = snap.ai.depthModel || state.ai.depthModel;
-          state.ai.refine = !!snap.ai.refine;
-          state.ai.lastClick = snap.ai.lastClick || null;
-          setAIModeUI();
-        }
-
-        editor.draw(); schedulePreviewRender(true); renderPresets(true); updateSettingsUI(); refreshButtons();
-      },
-      undo(){ if(state.histIndex>0){ state.histIndex--; history.load(state.histIndex); log('Undo'); } },
-      redo(){ if(state.histIndex<state.history.length-1){ state.histIndex++; history.load(state.histIndex); log('Redo'); } }
-    };
-
-    // -------------------------- BOX / LASSO HELPERS --------------------------
-    function defaultBoxAt(x,y){
-      const s = Math.max(40, Math.min(state.image.width, state.image.height)*0.12);
-      return {type:'box', x: clamp(x - s/2, 0, state.image.width - s), y: clamp(y - s/2, 0, state.image.height - s), w: s, h: s};
-    }
-    function hitBoxHandle(sel, x, y){
-      const pad = 8 / state.transform.scale;
-      const pts = [
-        ['nw', sel.x, sel.y], ['n',  sel.x+sel.w/2, sel.y], ['ne', sel.x+sel.w, sel.y],
-        ['e',  sel.x+sel.w, sel.y+sel.h/2], ['se', sel.x+sel.w, sel.y+sel.h],
-        ['s',  sel.x+sel.w/2, sel.y+sel.h], ['sw', sel.x, sel.y+sel.h], ['w',  sel.x, sel.y+sel.h/2],
-      ];
-      for(const [name, px, py] of pts){
-        if(Math.abs(x-px)<=pad && Math.abs(y-py)<=pad) return name;
-      }
-      return null;
-    }
-    function drawBoxHandles(ctx, sel){
-      const r = 5 / state.transform.scale;
-      const pts = [
-        [ sel.x, sel.y],[ sel.x+sel.w/2, sel.y],[ sel.x+sel.w, sel.y],
-        [ sel.x+sel.w, sel.y+sel.h/2],[ sel.x+sel.w, sel.y+sel.h],
-        [ sel.x+sel.w/2, sel.y+sel.h],[ sel.x, sel.y+sel.h],[ sel.x, sel.y+sel.h/2]
-      ];
-      ctx.fillStyle='#1877f2';
-      ctx.strokeStyle='#fff';
-      ctx.lineWidth = 1.5 / state.transform.scale;
-      pts.forEach(([px,py])=>{ ctx.beginPath(); ctx.rect(px-r, py-r, r*2, r*2); ctx.fill(); ctx.stroke(); });
-    }
-    const pointInBox = (sel,x,y)=> x>=sel.x && y>=sel.y && x<=sel.x+sel.w && y<=sel.y+sel.h;
-    function pointInLasso(sel, x, y){
-      let inside = false;
-      const pts = sel.points;
-      for(let i=0,j=pts.length-1; i<pts.length; j=i++){
-        const xi=pts[i].x, yi=pts[i].y, xj=pts[j].x, yj=pts[j].y;
-        const intersect = ((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi);
-        if(intersect) inside = !inside;
-      }
-      return inside;
-    }
-
-    // -------------------------- RENDER FLOW & PROGRESS --------------------------
-    let progressTimer=null, progressTarget=78;
-    function startProgress(){
-      dom.progressWrap.classList.add('visible');
-      let p = 0; dom.progressBar.style.width = '0%';
-      clearInterval(progressTimer);
-      progressTimer = setInterval(()=>{
-        p = clamp(p + 12, 0, progressTarget);
-        dom.progressBar.style.width = p + '%';
-      }, 60);
-    }
-    function finishProgress(){
-      clearInterval(progressTimer);
-      progressTimer = null;
-      dom.progressBar.style.width = '100%';
-      setTimeout(()=>{ dom.progressWrap.classList.remove('visible'); dom.progressBar.style.width='0%'; }, 280);
-    }
-
-    const renderPreviewDebounced = debounce(()=>{
+  // ---------------- Editor & Preview ----------------
+  const ed = {
+    c: dom.editorCanvas,
+    ctx: dom.editorCanvas.getContext('2d'),
+    updateSize(){
+      const w = dom.editorWrap.clientWidth, h = dom.editorWrap.clientHeight;
+      this.c.width=w; this.c.height=h;
+    },
+    toImageXY(clientX, clientY){
+      const r = this.c.getBoundingClientRect();
+      const cx = clientX - r.left, cy = clientY - r.top;
+      const x = (cx - state.ed.x)/state.ed.s;
+      const y = (cy - state.ed.y)/state.ed.s;
+      return {x, y};
+    },
+    fit(){
       if(!state.image) return;
-      state.rendering = true;
-      preview.layout();
-      preview.render();
-      state.rendering = false;
-      finishProgress();
-      renderPresets(true);
-      log('Preview rendered.');
-    }, 380);
-
-    function schedulePreviewRender(startProgressBar=true){
+      const iW = state.image.width, iH = state.image.height;
+      const cW = dom.editorWrap.clientWidth, cH = dom.editorWrap.clientHeight;
+      const s = Math.min(cW/iW, cH/iH)*0.98;
+      state.ed.s = s;
+      state.ed.x = (cW - iW*s)/2;
+      state.ed.y = (cH - iH*s)/2;
+    },
+    draw(){
+      const {ctx,c} = this;
+      ctx.clearRect(0,0,c.width,c.height);
       if(!state.image) return;
-      if(startProgressBar) startProgress();
-      renderPreviewDebounced();
+      ctx.save();
+      ctx.translate(state.ed.x, state.ed.y);
+      ctx.scale(state.ed.s, state.ed.s);
+      ctx.drawImage(state.image, 0,0);
+      if(state.seed){
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 1/state.ed.s;
+        ctx.beginPath();
+        ctx.moveTo(state.seed.x-12, state.seed.y);
+        ctx.lineTo(state.seed.x+12, state.seed.y);
+        ctx.moveTo(state.seed.x, state.seed.y-12);
+        ctx.lineTo(state.seed.x, state.seed.y+12);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
+
+  const pv = {
+    c: dom.previewCanvas,
+    ctx: dom.previewCanvas.getContext('2d'),
+    layout(){
+      if(!state.image) return;
+      const rect = dom.previewContainer.getBoundingClientRect();
+      const availW = Math.max(1, rect.width);
+      const availH = Math.max(1, rect.height);
+      const aspect = state.image.width/state.image.height;
+      let w = availW, h = w/aspect;
+      if(h>availH){ h = availH; w = h*aspect; }
+      this.c.width = Math.round(w); this.c.height = Math.round(h);
+      this.c.style.left = ((availW - this.c.width)/2) + 'px';
+      this.c.style.top  = ((availH - this.c.height)/2) + 'px';
+    },
+    render(){
+      if(!state.image) return;
+      const {ctx,c} = this;
+      ctx.clearRect(0,0,c.width,c.height);
+
+      // Build full-res mask using requested effect
+      const fullMask = buildEffectMaskFullRes();
+
+      // Render color-splash
+      const tmp = document.createElement('canvas');
+      tmp.width = state.image.width; tmp.height = state.image.height;
+      const tx = tmp.getContext('2d');
+      tx.drawImage(state.image,0,0);
+      const im = tx.getImageData(0,0,tmp.width,tmp.height);
+      const d = im.data;
+      for(let i=0;i<d.length;i+=4){
+        const y = Math.round(0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]);
+        d[i]=y; d[i+1]=y; d[i+2]=y; d[i+3]=255;
+      }
+      tx.putImageData(im,0,0);
+      ctx.drawImage(tmp, 0,0, c.width,c.height);
+
+      const fg = document.createElement('canvas');
+      fg.width = state.image.width; fg.height = state.image.height;
+      const fx = fg.getContext('2d');
+      fx.drawImage(state.image,0,0);
+      fx.globalCompositeOperation = 'destination-in';
+      fx.drawImage(fullMask,0,0);
+      ctx.drawImage(fg, 0,0, c.width, c.height);
+    }
+  };
+
+  function buildEffectMaskFullRes(){
+    const W = state.image.width, H = state.image.height;
+    const m = document.createElement('canvas');
+    m.width=W; m.height=H;
+    const mx = m.getContext('2d');
+    mx.clearRect(0,0,W,H);
+
+    // Source pieces
+    const seg = state.maskCanvas; // latest computed "base" mask (seg or edgegrow)
+    const depth = state.depthMap; // Float32Array or null
+    const feather = parseInt(dom.featherPx.value||'2',10);
+
+    // Make individual masks as needed for effect
+    let segMask = null, depthMask = null, edgesMask = null;
+
+    // Segmentation mask
+    if(seg) segMask = seg;
+
+    // Depth-based masks
+    const effect = state.effect;
+    if(depth && (effect.includes('depth') || effect==='depth-band' || effect==='depth-thresh' || state.refine)){
+      if(effect==='depth-band' || effect.includes('depth') || state.refine){
+        const band = parseFloat(dom.bandRange.value||'0.07');
+        const dm = makeDepthBandMask(depth, W,H, state.seed, band);
+        depthMask = mergeOr(depthMask, dm);
+      }
+      if(effect==='depth-thresh'){
+        const thr = parseFloat(dom.depthThrRange.value||'0.5');
+        const near = true; // choose near foreground (you could add a toggle)
+        const dm2 = makeDepthThresholdMask(depth, W,H, thr, near);
+        depthMask = mergeOr(depthMask, dm2);
+      }
     }
 
-    // -------------------------- FILE I/O --------------------------
-    dom.uploadBtn.addEventListener('click', ()=>dom.fileInput.click());
-    dom.fileInput.addEventListener('change', onFileInput);
-
-    // Drag & Drop on editor only
-    ['dragover','dragenter'].forEach(ev=>{
-      dom.editorWrap.addEventListener(ev,(e)=>{ e.preventDefault(); dom.editorWrap.classList.add('drop-hover'); });
-    });
-    ['dragleave','drop'].forEach(ev=>{
-      dom.editorWrap.addEventListener(ev,(e)=>{ e.preventDefault(); dom.editorWrap.classList.remove('drop-hover'); });
-    });
-    dom.editorWrap.addEventListener('drop', (e)=>{
-      e.preventDefault();
-      const f = e.dataTransfer?.files?.[0];
-      if(f && f.type.startsWith('image/')) readImageFile(f);
-    });
-
-    function onFileInput(e){
-      const f = e.target.files[0];
-      if(f) readImageFile(f);
-    }
-    function readImageFile(file){
-      const r = new FileReader();
-      r.onload = ()=>{
-        const img = new Image();
-        img.onload = ()=>{
-          state.image = img;
-          state.selections = [];
-          state.activeIndex = -1;
-          state.ai.outputs = {rawMask:null, finalMask:null, depth:null, depthCanvas:null, maskCanvas:null};
-          dom.editorEmpty.classList.add('hidden');
-          dom.previewEmpty.classList.add('hidden');
-          editor.updateSize(); preview.init();
-          focal.fit();
-          editor.draw();
-          renderPresets(true);
-          history.save();
-          refreshButtons();
-          schedulePreviewRender(true);
-          initSegWorker();
-          dom.aiOutputs.classList.remove('visible');
-          log('Image loaded:', file.name, `${img.width}x${img.height}`);
-        };
-        img.src = r.result;
-      };
-      r.readAsDataURL(file);
+    // Edge mask (from image itself)
+    if(effect==='edges' || effect.includes('edges')){
+      edgesMask = makeEdgesMask(state.image, 0.7, 0.3, parseFloat(dom.edgeThrRange.value||'0.18'));
     }
 
-    // -------------------------- FOCAL FIT / RESET VIEW --------------------------
-    const focal = {
-      fit(){
-        if(!state.image) return;
-        const iW = state.image.width, iH = state.image.height;
-        const cW = dom.editorWrap.clientWidth, cH = dom.editorWrap.clientHeight;
-        const scale = Math.min(cW/iW, cH/iH) * 0.97;
-        const x = (cW - iW*scale)/2;
-        const y = (cH - iH*scale)/2;
-        state.transform = {x,y,scale};
+    // Combine per effect
+    let finalMask = null;
+    switch(effect){
+      case 'seg':
+        finalMask = segMask || edgeGrowMask(state.image, state.seed?.x??Math.round(W/2), state.seed?.y??Math.round(H/2));
+        break;
+      case 'depth-band':
+        finalMask = depthMask || fallbackNullMask(W,H);
+        break;
+      case 'depth-thresh':
+        finalMask = depthMask || fallbackNullMask(W,H);
+        break;
+      case 'edges':
+        finalMask = edgesMask || fallbackNullMask(W,H);
+        break;
+      case 'seg-and-depth':
+        finalMask = intersectMasks(segMask, depthMask) || segMask || depthMask || fallbackNullMask(W,H);
+        break;
+      case 'seg-and-edges':
+        finalMask = intersectMasks(segMask, edgesMask) || segMask || edgesMask || fallbackNullMask(W,H);
+        break;
+      case 'seg-and-depth-and-edges':
+        finalMask = intersectMasks(intersectMasks(segMask, depthMask), edgesMask) || intersectMasks(segMask, depthMask) || segMask || depthMask || edgesMask || fallbackNullMask(W,H);
+        break;
+      case 'seg-or-depth-edge-refine': {
+        const base = unionMasks(segMask, depthMask) || segMask || depthMask || fallbackNullMask(W,H);
+        finalMask = edgesMask ? intersectMasks(base, edgesMask) : base;
+        break;
       }
-    };
-    const refitDebounced = debounce(()=>{ if(state.image){ focal.fit(); editor.draw(); preview.layout(); } }, 140);
-    window.addEventListener('resize', ()=>{ editor.updateSize(); preview.layout(); refitDebounced(); });
+      default:
+        finalMask = segMask || fallbackNullMask(W,H);
+    }
 
-    // -------------------------- EDITOR & PREVIEW INTERACTIONS --------------------------
-    let painting = false; // erasers
-
-    dom.editorWrap.addEventListener('mousedown', async (e)=>{
-      if(!state.image) return;
-
-      // If AI mode active, a click sets/updates the seed and can run the pipeline.
-      if(state.ai.active){
-        const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
-        const sx = Math.round(clamp(p.x,0,state.image.width-1));
-        const sy = Math.round(clamp(p.y,0,state.image.height-1));
-        state.ai.lastClick = {x:sx,y:sy};
-        log(`AI seed set at (${sx}, ${sy}).`);
-        // If models preloaded, run immediately
-        runAIPipeline({trigger:'click'}).catch(err=>log('AI error:', err?.message || err));
-        return;
-      }
-
-      if(state.isPanning){
-        state.drag = {active:true,kind:'pan', startX:e.clientX, startY:e.clientY, tx:state.transform.x, ty:state.transform.y, moved:false};
-        dom.editorWrap.classList.add('panning'); return;
-      }
-
-      const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
-
-      // Auto tools (manual group)
-      if(state.mode==='autoSmart' || state.mode==='autoUltra'){
-        const sx = Math.round(p.x), sy = Math.round(p.y);
-        if(segReady){
-          startProgress();
-          await requestSegMask(state.mode, sx, sy, state.tol, state.aggr);
-        } else {
-          const mask = (state.mode==='autoUltra')
-            ? ultraMask(state.image, sx, sy, state.tol/100, state.aggr)
-            : magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
-          if(mask){
-            state.selections.push({type:'mask', maskCanvas: mask, generator:{
-              tool: (state.mode==='autoUltra'?'grabcutLite':'edgeGrow'),
-              seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr, fallback:true }, origin:'manual'
-            }});
-            state.activeIndex = state.selections.length-1;
-            editor.draw();
-            schedulePreviewRender(true);
-            history.save();
-          }
-        }
-        return;
-      }
-
-      if(state.mode==='autoWand'){
-        const sx = Math.round(p.x), sy = Math.round(p.y);
-        const mask = magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
-        if(mask){
-          state.selections.push({type:'mask', maskCanvas: mask, generator:{
-            tool:'magicWand', seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr }, origin:'manual'
-          }});
-          state.activeIndex = state.selections.length-1;
-          editor.draw(); schedulePreviewRender(true); history.save();
-          log('Auto Wand selection added.');
-        }
-        return;
-      }
-
-      if(state.mode==='protectEraser' || state.mode==='removeEraser'){
-        painting = true;
-        ensureBrushLayer(state.mode==='protectEraser' ? 'protect' : 'mask');
-        paintOnActiveMask(p.x, p.y, true);
-        editor.draw(); schedulePreviewRender();
-        return;
-      }
-
-      // hit-tests
-      let hitIndex = -1, hitHandle = null, hitKind='none';
-      for(let i=state.selections.length-1;i>=0;i--){
-        const sel = state.selections[i];
-        if(sel.type==='box'){
-          const h = hitBoxHandle(sel,p.x,p.y);
-          if(h){ hitIndex=i; hitHandle=h; hitKind='box-resize'; break; }
-          if(pointInBox(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
-        }else if(sel.type==='lasso'){
-          if(pointInLasso(sel,p.x,p.y)){ hitIndex=i; hitKind='move'; break; }
-        }else if(sel.type==='mask' || sel.type==='protect'){
-          if(maskHit(sel.maskCanvas, p.x, p.y)){ hitIndex=i; hitKind='move'; break; }
-        }
-      }
-
-      if(hitIndex>=0){
-        state.activeIndex = hitIndex;
-        state.drag = {active:true, kind:hitKind, handle:hitHandle, startX:p.x, startY:p.y, moved:false,
-                      snapshot: JSON.parse(JSON.stringify(state.selections[hitIndex], (k,v)=>{
-                        if(k==='maskCanvas' && v && v.toDataURL) return v.toDataURL();
-                        return v;
-                      }))};
-        editor.draw();
-        return;
-      }
-
-      // start new
-      state.activeIndex = -1;
-      if(state.mode==='box'){
-        const seed = {type:'box', x:p.x, y:p.y, w:0, h:0};
-        state.selections.push(seed);
-        state.activeIndex = state.selections.length-1;
-        state.drag = {active:true,kind:'box-make', startX:p.x, startY:p.y, moved:false};
-      } else if(state.mode==='lasso'){
-        state.activeIndex = state.selections.length;
-        const sel = {type:'lasso', points:[p]};
-        state.selections.push(sel);
-        state.drag = {active:true,kind:'lasso-make', last:p, moved:false};
-      }
-      editor.draw();
-    });
-
-    dom.editorWrap.addEventListener('mousemove', (e)=>{
-      if(!state.image) return;
-      updateMonocle(e, 'editor');
-
-      if(painting && (state.mode==='protectEraser' || state.mode==='removeEraser')){
-        const p = editor.imgToCanvasSpace(e.clientX, e.clientY);
-        paintOnActiveMask(p.x, p.y, false);
-        editor.draw(); schedulePreviewRender();
-        return;
-      }
-
-      if(!state.drag.active) return;
-      const p = editor.imgToCanvasSpace(e.clientX,e.clientY);
-      if(!state.drag.moved && (Math.abs(e.clientX-state.drag.startX)>3 || Math.abs(e.clientY-state.drag.startY)>3)) state.drag.moved = true;
-
-      switch(state.drag.kind){
-        case 'pan':{
-          state.transform.x = state.drag.tx + (e.clientX - state.drag.startX);
-          state.transform.y = state.drag.ty + (e.clientY - state.drag.startY);
-          editor.draw();
-          break;
-        }
-        case 'box-resize':{
-          const sel = state.selections[state.activeIndex];
-          const snap = reviveMaskInSnapshot(state.drag.snapshot);
-          const handle = state.drag.handle;
-          const minSize = 10;
-          const right = snap.x + snap.w, bottom = snap.y + snap.h;
-          let nx = snap.x, ny = snap.y, nw = snap.w, nh = snap.h;
-          if(handle.includes('n')){ ny = Math.min(bottom - minSize, p.y); nh = bottom - ny; }
-          if(handle.includes('s')){ nh = Math.max(minSize, p.y - snap.y); }
-          if(handle.includes('w')){ nx = Math.min(right - minSize, p.x); nw = right - nx; }
-          if(handle.includes('e')){ nw = Math.max(minSize, p.x - snap.x); }
-          Object.assign(sel, {x:nx, y:ny, w:nw, h:nh});
-          editor.draw(); schedulePreviewRender();
-          break;
-        }
-        case 'move':{
-          const sel = state.selections[state.activeIndex];
-          const snap = reviveMaskInSnapshot(state.drag.snapshot);
-          const dx = p.x - state.drag.startX, dy = p.y - state.drag.startY;
-          if(sel.type==='box'){ sel.x = snap.x + dx; sel.y = snap.y + dy; }
-          else if(sel.type==='lasso'){ sel.points = snap.points.map(pt=>({x:pt.x+dx, y:pt.y+dy})); }
-          else if(sel.type==='mask' || sel.type==='protect'){
-            const moved = document.createElement('canvas');
-            moved.width = snap.maskCanvas.width; moved.height = snap.maskCanvas.height;
-            moved.getContext('2d').drawImage(snap.maskCanvas, dx, dy);
-            sel.maskCanvas = moved;
-          }
-          editor.draw(); schedulePreviewRender();
-          break;
-        }
-        case 'box-make':{
-          const startX = state.drag.startX, startY = state.drag.startY;
-          const x = Math.min(startX, p.x), y = Math.min(startY, p.y);
-          const w = Math.abs(p.x - startX), h = Math.abs(p.y - startY);
-          const sel = state.selections[state.activeIndex];
-          Object.assign(sel, {x,y,w,h});
-          editor.draw(); schedulePreviewRender();
-          break;
-        }
-        case 'lasso-make':{
-          const sel = state.selections[state.activeIndex];
-          const last = state.drag.last;
-          const dist2 = (p.x-last.x)**2 + (p.y-last.y)**2;
-          if(dist2 > (4/state.transform.scale)**2){
-            sel.points.push(p);
-            state.drag.last = p;
-            editor.draw();
-          }
-          break;
-        }
-      }
-    });
-
-    window.addEventListener('mouseup', ()=>{
-      if(!state.image) return;
-
-      if(painting){
-        painting = false; history.save(); return;
-      }
-
-      if(!state.drag.active) return;
-      const wasMake = /-make$/.test(state.drag.kind);
-      if(state.drag.kind==='lasso-make'){
-        const sel = state.selections[state.activeIndex];
-        if(sel && sel.points.length>2){
-          const a = sel.points[0], b = sel.points[sel.points.length-1];
-          if(a.x!==b.x || a.y!==b.y) sel.points.push({x:a.x,y:a.y});
-        }
-      }
-      if(state.drag.kind==='box-make' && !state.drag.moved){
-        state.selections[state.activeIndex] = defaultBoxAt(state.drag.startX, state.drag.startY);
-      } else if(state.drag.kind==='box-make'){
-        const sel = state.selections[state.activeIndex];
-        if(sel && (sel.w<5 || sel.h<5)){ state.selections.splice(state.activeIndex,1); state.activeIndex = -1; }
-      }
-      if(state.drag.kind==='lasso-make'){
-        const sel = state.selections[state.activeIndex];
-        if(sel && sel.points.length<3){ state.selections.splice(state.activeIndex,1); state.activeIndex = -1; }
-      }
-
-      state.drag.active=false;
-      dom.editorWrap.classList.remove('panning');
-      editor.draw();
-      schedulePreviewRender(true);
-      history.save();
-      if(wasMake) log('Selection added.');
-    });
-
-    // zoom
-    dom.editorWrap.addEventListener('wheel', (e)=>{
-      if(!state.image) return;
-      e.preventDefault();
-      const r = dom.editorCanvas.getBoundingClientRect();
-      const mx = e.clientX - r.left, my = e.clientY - r.top;
-      const zf = 1.1;
-      const zoom = e.deltaY < 0 ? zf : 1/zf;
-      const newScale = clamp(state.transform.scale * zoom, 0.1, 20);
-      state.transform.x = mx - (mx - state.transform.x)*zoom;
-      state.transform.y = my - (my - state.transform.y)*zoom;
-      state.transform.scale = newScale;
-      editor.draw();
-      updateMonocle(e, 'editor');
-    }, {passive:false});
-
-    // Preview monocle (read-only hover)
-    dom.previewWrap.addEventListener('mousemove', (e)=>{
-      if(!state.image) return;
-      updateMonocle(e, 'preview');
-    });
-
-    // Keep monocles separate; they auto-show on panel hover.
-    dom.editorWrap.addEventListener('mouseenter', ()=> dom.monocleLeft.style.display = 'block');
-    dom.previewWrap.addEventListener('mouseenter', ()=> dom.monocleRight.style.display = 'block');
-    dom.editorWrap.addEventListener('mouseleave', ()=> {/* keep last frame; do not hide */});
-    dom.previewWrap.addEventListener('mouseleave', ()=> {/* keep last frame; do not hide */});
-
-    // buttons
-    dom.modeLassoBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('lasso'); });
-    dom.newLassoBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('lasso'); state.activeIndex = -1; editor.draw(); log('Ready to draw a new lasso.'); });
-    dom.modeBoxBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('box'); });
-    dom.deleteSelectionBtn.addEventListener('click', ()=>{
-      if(state.activeIndex!==-1){
-        const t = state.selections[state.activeIndex]?.type;
-        state.selections.splice(state.activeIndex,1);
-        state.activeIndex=-1; editor.draw(); schedulePreviewRender(true); history.save(); log('Deleted:', t||'');
-      }
-    });
-    dom.autoWandBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('autoWand'); });
-    dom.autoSmartBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('autoSmart'); });
-    dom.autoUltraBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('autoUltra'); });
-    dom.autoObjectsBtn.addEventListener('click', async ()=>{
-      setAIMode(false);
-      if(!state.image){ alert('Load an image first.'); return; }
-      const sx = Math.round(state.image.width/2), sy = Math.round(state.image.height/2);
-      if(segReady){
-        startProgress();
-        await requestSegMask('autoObjects', sx, sy, state.tol, state.aggr);
-      } else {
-        const mask = magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
-        if(mask){
-          state.selections.push({type:'mask', maskCanvas: mask, generator:{tool:'magicWand', seedX:sx, seedY:sy, params:{ tol: state.tol, aggr: state.aggr }, auto:true, origin:'manual'}});
-          state.activeIndex = state.selections.length-1;
-          editor.draw(); schedulePreviewRender(true); history.save();
-        }
-      }
-    });
-    dom.protectEraserBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('protectEraser'); });
-    dom.removeEraserBtn.addEventListener('click', ()=>{ setAIMode(false); setMode('removeEraser'); });
-    dom.undoBtn.addEventListener('click', ()=>history.undo());
-    dom.redoBtn.addEventListener('click', ()=>history.redo());
-    dom.renderNowBtn.addEventListener('click', ()=>{ startProgress(); preview.layout(); preview.render(); finishProgress(); renderPresets(true); log('Manual render complete.'); });
-
-    dom.resetViewBtn.addEventListener('click', ()=>{ if(!state.image) return; focal.fit(); editor.draw(); log('View reset (fit).'); });
-
-    dom.downloadBtn.addEventListener('click', ()=>{
-      if(!state.image){ alert('Load an image first.'); return; }
-      // Full-resolution render (HQ)
+    // Feather/blur
+    const featherPx = clamp(parseInt(feather,10)||0, 0, 12);
+    if(featherPx>0){
       const out = document.createElement('canvas');
-      out.width = state.image.width; out.height = state.image.height;
-      const octx = out.getContext('2d');
+      out.width=W; out.height=H;
+      const ox = out.getContext('2d');
+      ox.filter = `blur(${featherPx}px)`;
+      ox.drawImage(finalMask,0,0);
+      ox.filter='none';
+      return out;
+    }
+    return finalMask;
+  }
 
-      // grayscale background (HQ accurate)
-      const tmpC=document.createElement('canvas'); tmpC.width=out.width; tmpC.height=out.height;
-      const tmpX=tmpC.getContext('2d'); tmpX.drawImage(state.image,0,0);
-      const src=tmpX.getImageData(0,0,out.width,out.height);
-      const data=src.data;
-      for(let i=0;i<data.length;i+=4){
-        const y=Math.round(0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2]);
-        data[i]=y; data[i+1]=y; data[i+2]=y; data[i+3]=255;
-      }
-      tmpX.putImageData(src,0,0);
-      octx.drawImage(tmpC,0,0);
+  function fallbackNullMask(W,H){
+    const c = document.createElement('canvas'); c.width=W; c.height=H; return c;
+  }
+  function intersectMasks(a,b){
+    if(!a || !b) return null;
+    const W = a.width, H = a.height;
+    const out = document.createElement('canvas'); out.width=W; out.height=H;
+    const ox = out.getContext('2d');
+    ox.drawImage(a,0,0);
+    ox.globalCompositeOperation = 'destination-in';
+    ox.drawImage(b,0,0);
+    return out;
+  }
+  function unionMasks(a,b){
+    if(!a && !b) return null;
+    if(a && !b) return a;
+    if(!a && b) return b;
+    const W = a.width, H = a.height;
+    const out = document.createElement('canvas'); out.width=W; out.height=H;
+    const ox = out.getContext('2d');
+    ox.drawImage(a,0,0);
+    ox.globalCompositeOperation = 'destination-over';
+    ox.drawImage(b,0,0);
+    return out;
+  }
+  function mergeOr(existing, add){
+    if(!add) return existing || null;
+    return unionMasks(existing, add);
+  }
 
-      // Foreground colorized region via mask (includes AI mask if active)
-      const fullMask = buildFullMaskCanvas();
-      const fg = document.createElement('canvas'); fg.width=out.width; fg.height=out.height;
-      const fgctx = fg.getContext('2d');
-      fgctx.drawImage(state.image,0,0);
-      fgctx.globalCompositeOperation = 'destination-in';
-      fgctx.drawImage(fullMask,0,0);
-      octx.drawImage(fg,0,0);
-
-      const url = out.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = url; a.download = `colorsplash-result-${Date.now()}.png`; a.click();
-    });
-
-    dom.startOverBtn.addEventListener('click', ()=>{
-      if(!state.image) return;
-      if(confirm('Clear the image and all selections?')){
-        state.image=null; state.selections=[]; state.activeIndex=-1; state.history=[]; state.histIndex=-1;
-        state.ai.outputs = {rawMask:null, finalMask:null, depth:null, depthCanvas:null, maskCanvas:null};
-        dom.editorEmpty.classList.remove('hidden'); dom.previewEmpty.classList.remove('hidden');
-        editor.updateSize(); editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
-        preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
-        dom.aiOutputs.classList.remove('visible');
-        renderPresets(); refreshButtons(); log('Project cleared.');
-      }
-    });
-
-    dom.saveBtn.addEventListener('click', ()=>{
-      if(!state.image) return;
-      const payload = {
-        app: 'Color Splash Pro X', version: APP_VERSION,
-        imageDataURL: getCurrentImageDataURL(),
-        selections: state.selections.map(s=>{
-          const base = {...s};
-          if((s.type==='mask' || s.type==='protect') && s.maskCanvas) base.maskCanvas = s.maskCanvas.toDataURL();
-          return base;
-        }),
-        activePreset: state.activePreset,
-        aggr: state.aggr, tol: state.tol, filtStrength: state.filtStrength,
-        ai: {
-          active: state.ai.active,
-          segModel: state.ai.segModel,
-          depthModel: state.ai.depthModel,
-          refine: state.ai.refine,
-          lastClick: state.ai.lastClick
-        }
-      };
-      const blob = new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `colorsplash-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(a.href);
-      log('Saved project JSON.');
-    });
-
-    dom.loadBtn.addEventListener('click', ()=>dom.loadInput.click());
-    dom.loadInput.addEventListener('change', (e)=>{
-      const f = e.target.files[0]; if(!f) return;
-      const r = new FileReader();
-      r.onload = ()=>{
-        try{ const obj = JSON.parse(r.result); loadFromObject(obj); log('Loaded project JSON.'); }
-        catch(err){ alert('Invalid JSON file'); }
-      };
-      r.readAsText(f);
-    });
-
-    function loadFromObject(obj){
+  // ---------------- Image I/O ----------------
+  dom.uploadBtn.addEventListener('click', ()=> dom.imgInput.click());
+  dom.imgInput.addEventListener('change', e=>{
+    const f = e.target.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = ()=>{
       const img = new Image();
       img.onload = ()=>{
         state.image = img;
-        state.selections = (obj.selections||[]).map(s=>{
-          if((s.type==='mask' || s.type==='protect') && s.maskCanvas && typeof s.maskCanvas==='string'){
-            const cnv = dataURLToCanvas(s.maskCanvas);
-            return {...s, maskCanvas: cnv};
-          }
-          return s;
-        });
-        state.activeIndex = -1;
-        state.activePreset = obj.activePreset ?? 0;
-        state.aggr = obj.aggr ?? 35;
-        state.tol = obj.tol ?? 25;
-        state.filtStrength = obj.filtStrength ?? 100;
-
-        // restore AI snapshot
-        if(obj.ai){
-          state.ai.active = !!obj.ai.active;
-          state.ai.segModel = obj.ai.segModel || state.ai.segModel;
-          state.ai.depthModel = obj.ai.depthModel || state.ai.depthModel;
-          state.ai.refine = !!obj.ai.refine;
-          state.ai.lastClick = obj.ai.lastClick || null;
-        }
-
-        dom.editorEmpty.classList.add('hidden'); dom.previewEmpty.classList.add('hidden');
-        editor.updateSize(); preview.init(); focal.fit(); editor.draw(); renderPresets(true); updateSettingsUI();
-        state.history=[]; state.histIndex=-1; history.save(); refreshButtons();
-        schedulePreviewRender(true);
-        initSegWorker();
-        setAIModeUI();
+        state.seed = null;
+        state.maskCanvas = null;
+        state.depthCanvas = null;
+        state.depthMap = null;
+        dom.edEmpty.classList.add('hidden');
+        ed.updateSize(); ed.fit(); ed.draw();
+        pv.layout(); pv.render();
+        dom.aiThumbs.classList.remove('visible');
+        log(`Image loaded: ${f.name} ${img.width}x${img.height}`);
       };
-      img.src = obj.imageDataURL;
+      img.src = r.result;
+    };
+    r.readAsDataURL(f);
+  });
+
+  dom.resetBtn.addEventListener('click', ()=>{
+    state.image = null; state.seed = null; state.maskCanvas = null; state.depthCanvas = null; state.depthMap = null;
+    ed.updateSize(); ed.ctx.clearRect(0,0,ed.c.width,ed.c.height);
+    pv.ctx.clearRect(0,0,pv.c.width,pv.c.height);
+    dom.edEmpty.classList.remove('hidden');
+    dom.aiThumbs.classList.remove('visible');
+    log('Reset.');
+  });
+
+  dom.downloadBtn.addEventListener('click', ()=>{
+    if(!state.image){ alert('Upload an image first.'); return; }
+    // Full-res render
+    const out = document.createElement('canvas');
+    out.width = state.image.width; out.height = state.image.height;
+    const ox = out.getContext('2d');
+
+    // grayscale
+    const tmp = document.createElement('canvas');
+    tmp.width = out.width; tmp.height = out.height;
+    const tx = tmp.getContext('2d');
+    tx.drawImage(state.image,0,0);
+    const im = tx.getImageData(0,0,out.width,out.height);
+    const d = im.data;
+    for(let i=0;i<d.length;i+=4){
+      const y = Math.round(0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]);
+      d[i]=y; d[i+1]=y; d[i+2]=y; d[i+3]=255;
     }
+    tx.putImageData(im,0,0);
+    ox.drawImage(tmp,0,0);
 
-    // -------------------------- SETTINGS --------------------------
-    dom.aggrRange.addEventListener('input', ()=>{
-      state.aggr = parseInt(dom.aggrRange.value,10); updateSettingsUI();
-      schedulePreviewRender(true);
-    });
+    // mask & colorized
+    const mask = buildEffectMaskFullRes();
+    const fg = document.createElement('canvas'); fg.width=out.width; fg.height=out.height;
+    const fx = fg.getContext('2d'); fx.drawImage(state.image,0,0);
+    fx.globalCompositeOperation = 'destination-in'; fx.drawImage(mask,0,0);
+    ox.drawImage(fg,0,0);
 
-    dom.tolRange.addEventListener('input', ()=>{
-      state.tol  = parseInt(dom.tolRange.value,10); updateSettingsUI();
-      if(state.modeGroup==='manual'){
-        // Smart recompute for generated auto masks (manual tools)
-        recomputeGeneratedMasks();
+    const url = out.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url; a.download = `colorsplash-${Date.now()}.png`;
+    a.click();
+  });
+
+  // ---------------- Interactions (Editor) ----------------
+  dom.editorWrap.addEventListener('mousedown', (e)=>{
+    if(!state.image) return;
+    if(e.button===0){
+      if(!e.ctrlKey && !e.metaKey && !e.altKey){
+        const p = ed.toImageXY(e.clientX,e.clientY);
+        const sx = Math.round(clamp(p.x,0,state.image.width-1));
+        const sy = Math.round(clamp(p.y,0,state.image.height-1));
+        state.seed = {x:sx,y:sy};
+        ed.draw();
+        log(`Seed set at (${sx}, ${sy}).`);
+        if(state.aiActive) runAIPipeline('click').catch(err=>log('AI error:', err?.message||err));
       }
-    });
-
-    dom.fltRange.addEventListener('input', ()=>{
-      state.filtStrength = parseInt(dom.fltRange.value,10); updateSettingsUI(); schedulePreviewRender(true);
-    });
-
-    function updateSettingsUI(){
-      dom.aggrRange.value = state.aggr; dom.aggrVal.textContent = state.aggr;
-      dom.tolRange.value  = state.tol;  dom.tolVal.textContent  = state.tol;
-      dom.fltRange.value  = state.filtStrength; dom.fltVal.textContent = state.filtStrength+'%';
-
-      // mirror refine toggle to AI panel
-      dom.aiRefine.checked = state.ai.refine;
-      dom.aiRefine2.checked = state.ai.refine;
     }
-
-    // Logs panel collapsed by default
-    let logsVisible = false;
-    const logsContainer = document.querySelector('.logs');
-    const applyLogsVisibility = ()=>{ logsContainer.style.display = logsVisible ? 'block' : 'none'; };
-    applyLogsVisibility();
-    dom.toggleLogsBtn.addEventListener('click', ()=>{ logsVisible = !logsVisible; applyLogsVisibility(); });
-    dom.clearLogsBtn.addEventListener('click', ()=>{ dom.logBody.innerHTML=''; dom.aiLogBody.innerHTML=''; });
-
-    function setMode(m){
-      state.mode = m;
-      dom.modeLassoBtn.classList.toggle('active', m==='lasso');
-      dom.modeBoxBtn.classList.toggle('active', m==='box');
-      dom.autoWandBtn.classList.toggle('active', m==='autoWand');
-      dom.autoSmartBtn.classList.toggle('active', m==='autoSmart');
-      dom.autoUltraBtn.classList.toggle('active', m==='autoUltra');
-      dom.protectEraserBtn.classList.toggle('active', m==='protectEraser');
-      dom.removeEraserBtn.classList.toggle('active', m==='removeEraser');
-      log('Mode:', m);
-    }
-    function refreshButtons(){
-      dom.undoBtn.disabled = state.histIndex<=0;
-      dom.redoBtn.disabled = state.histIndex>=state.history.length-1 || state.history.length===0;
-      dom.deleteSelectionBtn.disabled = state.activeIndex===-1;
-      dom.saveBtn.disabled = !state.image;
-      dom.startOverBtn.disabled = !state.image;
-    }
-
-    function initEmpty(){
-      editor.updateSize();
-      editor.ctx.clearRect(0,0,editor.c.width, editor.c.height);
-      preview.ctx.clearRect(0,0,preview.c.width, preview.c.height);
-      renderPresets();
-      updateSettingsUI();
-      refreshButtons();
-      log(`App ready. Version ${APP_VERSION}`);
-      log('Tip: S=Lasso, B=Box, W=Auto Wand, G=Auto Smart, U=Auto Ultra, E=Protect Eraser, R=Remove Eraser. Space+Drag pan. Wheel zoom.');
-      setAIModeUI();
-      detectRuntime();
-    }
-    preview.init();
-    initEmpty();
-
-    // -------------------------- SMART RECOMPUTE (manual) --------------------------
-    async function recomputeGeneratedMasks(){
-      if(!state.image){ return; }
-      const targets = [];
-      state.selections.forEach((s, idx)=>{
-        if(s && s.type==='mask' && s.generator && s.generator.tool && s.generator.origin!=='ai'){
-          const t = s.generator.tool;
-          if(t==='edgeGrow' || t==='grabcutLite' || t==='magicWand'){ targets.push(idx); }
-        }
-      });
-      if(targets.length===0){ schedulePreviewRender(true); return; }
-
-      startProgress();
-      const newMasks = [];
-      for(const idx of targets){
-        const s = state.selections[idx];
-        const g = s.generator || {};
-        const sx = Math.round(g.seedX ?? (state.image.width/2));
-        const sy = Math.round(g.seedY ?? (state.image.height/2));
-        const tool = (g.tool==='edgeGrow') ? 'autoSmart'
-                   : (g.tool==='grabcutLite') ? 'autoUltra'
-                   : (g.tool==='magicWand') ? 'autoWand'
-                   : 'autoSmart';
-
-        if(tool==='autoWand'){
-          const mask = magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
-          if(mask) newMasks.push({i:idx, canvas:mask, generator:{tool:'magicWand', seedX:sx, seedY:sy, params:{tol:state.tol, aggr:state.aggr}, origin:'manual'}});
-        } else if(segReady){
-          await requestSegMask(tool, sx, sy, state.tol, state.aggr);
-          newMasks.push({i:idx, replaceByWorker:true});
-        } else {
-          const fallback = (tool==='autoUltra')
-            ? ultraMask(state.image, sx, sy, state.tol/100, state.aggr)
-            : magicWandMask(state.image, sx, sy, state.tol/100, state.aggr);
-          if(fallback) newMasks.push({i:idx, canvas:fallback, generator:{
-            tool: tool==='autoUltra' ? 'grabcutLite' : 'edgeGrow',
-            seedX:sx, seedY:sy, params:{tol:state.tol, aggr:state.aggr, fallback:true}, origin:'manual'
-          }});
-        }
-      }
-
-      const toDelete = [];
-      for(const nm of newMasks){
-        if(nm.replaceByWorker){
-          toDelete.push(nm.i);
-        } else {
-          state.selections[nm.i] = {type:'mask', maskCanvas:nm.canvas, generator:nm.generator};
-        }
-      }
-      toDelete.sort((a,b)=>b-a).forEach(i=> state.selections.splice(i,1));
-
-      editor.draw();
-      schedulePreviewRender(false);
-      history.save();
-      finishProgress();
-      log('Recomputed', targets.length, 'generated mask(s) for new tolerance/aggr.');
-    }
-
-    // -------------------------- AUTO TOOLS (built-in) --------------------------
-    function magicWandMask(img, seedX, seedY, tol01, growStrength){
-      const w = img.width, h = img.height;
-      const maxSide = 1024;
-      const scale = Math.min(1, maxSide / Math.max(w,h));
-      const sw = Math.max(1, Math.round(w*scale));
-      const sh = Math.max(1, Math.round(h*scale));
-
-      const sC = document.createElement('canvas');
-      sC.width = sw; sC.height = sh;
-      const sX = sC.getContext('2d');
-      sX.imageSmoothingEnabled = true;
-      sX.drawImage(img, 0,0, sw, sh);
-
-      const sx = clamp(Math.round(seedX*scale),0,sw-1);
-      const sy = clamp(Math.round(seedY*scale),0,sh-1);
-
-      const src = sX.getImageData(0,0,sw,sh);
-      const data = src.data;
-      const mask = new Uint8Array(sw*sh);
-
-      const idx = (x,y)=> (y*sw + x);
-      const pIdx = (x,y)=> idx(x,y)*4;
-
-      const r0 = data[pIdx(sx,sy)+0], g0 = data[pIdx(sx,sy)+1], b0 = data[pIdx(sx,sy)+2];
-      const thr = 8 + tol01*132;
-
-      const stack = [[sx,sy]];
-      mask[idx(sx,sy)] = 1;
-      while(stack.length){
-        const [x,y] = stack.pop();
-        for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
-          if(nx<0||ny<0||nx>=sw||ny>=sh) continue;
-          const id = idx(nx,ny);
-          if(mask[id]) continue;
-          const p = pIdx(nx,ny);
-          const dr = data[p]-r0, dg = data[p+1]-g0, db = data[p+2]-b0;
-          const dist = Math.sqrt(dr*dr + dg*dg + db*db);
-          if(dist<=thr){ mask[id]=1; stack.push([nx,ny]); }
-        }
-      }
-
-      if(growStrength && growStrength>0){
-        const iters = Math.round(clamp(growStrength,0,100) * 0.08);
-        const nb = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
-        for(let k=0;k<iters;k++){
-          const copy = mask.slice(0);
-          for(let y=0;y<sh;y++){
-            for(let x=0;x<sw;x++){
-              if(copy[idx(x,y)]) continue;
-              let on = 0;
-              for(const [dx,dy] of nb){
-                const xx=x+dx, yy=y+dy;
-                if(xx>=0&&yy>=0&&xx<sw&&yy<sh && copy[idx(xx,yy)]){ on=1; break; }
-              }
-              if(on) mask[idx(x,y)] = 1;
-            }
-          }
-        }
-      }
-
-      const mC = document.createElement('canvas');
-      mC.width = w; mC.height = h;
-      const mX = mC.getContext('2d');
-
-      const mSmall = document.createElement('canvas');
-      mSmall.width = sw; mSmall.height = sh;
-      const msx = mSmall.getContext('2d');
-      const imgMask = msx.createImageData(sw, sh);
-      for(let i=0;i<sw*sh;i++){
-        const v = mask[i] ? 255 : 0;
-        imgMask.data[i*4+0] = 255; imgMask.data[i*4+1] = 255; imgMask.data[i*4+2] = 255; imgMask.data[i*4+3] = v;
-      }
-      msx.putImageData(imgMask, 0, 0);
-      mX.imageSmoothingEnabled = false;
-      mX.drawImage(mSmall, 0,0, sw,sh, 0,0, w,h);
-      return mC;
-    }
-    function ultraMask(img, seedX, seedY, tol01, aggr){
-      return magicWandMask(img, seedX, seedY, Math.min(1, tol01*1.2+0.05), aggr+8);
-    }
-    function maskHit(maskCanvas, x, y){
-      if(x<0||y<0||x>=maskCanvas.width||y>=maskCanvas.height) return false;
-      const ctx = maskCanvas.getContext('2d');
-      const d = ctx.getImageData(Math.floor(x), Math.floor(y), 1,1).data;
-      return d[3] > 10;
-    }
-    function edgeFromMask(maskCanvas, r){
-      const w = maskCanvas.width, h = maskCanvas.height;
-      if(!w||!h) return null;
-      const srcCtx = maskCanvas.getContext('2d');
-      const src = srcCtx.getImageData(0,0,w,h);
-
-      const eroded = document.createElement('canvas');
-      eroded.width=w; eroded.height=h;
-      const ex = eroded.getContext('2d');
-      ex.filter = `blur(${Math.max(0.5,r)}px)`; ex.drawImage(maskCanvas,0,0); ex.filter = 'none';
-      const eData = ex.getImageData(0,0,w,h);
-
-      const edge = document.createElement('canvas');
-      edge.width=w; edge.height=h;
-      const out = edge.getContext('2d');
-      const oData = out.createImageData(w,h);
-
-      for(let i=0;i<oData.data.length;i+=4){
-        const a = src.data[i+3], b = eData.data[i+3];
-        const v = Math.max(0, a - b);
-        oData.data[i+0]=0; oData.data[i+1]=0; oData.data[i+2]=0; oData.data[i+3]=v>8? 220:0;
-      }
-      out.putImageData(oData,0,0);
-      return edge;
-    }
-    function reviveMaskInSnapshot(snap){
-      if(snap && (snap.type==='mask' || snap.type==='protect') && snap.maskCanvas && typeof snap.maskCanvas==='string'){
-        snap.maskCanvas = dataURLToCanvas(snap.maskCanvas);
-      }
-      return snap;
-    }
-    function dataURLToCanvas(url){
-      const img = new Image();
-      const cnv = document.createElement('canvas');
-      img.onload = ()=>{ cnv.width = img.width; cnv.height = img.height; cnv.getContext('2d').drawImage(img,0,0); };
-      img.src = url;
-      return cnv;
-    }
-    function getCurrentImageDataURL(){
-      if(!state.image) return '';
-      if(typeof state.image.src === 'string' && state.image.src.startsWith('data:')) return state.image.src;
-      const c = document.createElement('canvas'); c.width = state.image.width; c.height = state.image.height;
-      const ctx = c.getContext('2d'); ctx.drawImage(state.image,0,0);
-      return c.toDataURL('image/png');
-    }
-
-    // -------------------------- ERASERS --------------------------
-    function ensureBrushLayer(kind){
-      const idx = state.selections.findIndex(s=>s.type === (kind==='protect'?'protect':'mask'));
-      if(idx>=0){ state.activeIndex = idx; return; }
-      const cnv = document.createElement('canvas');
-      cnv.width = state.image.width; cnv.height = state.image.height;
-      state.selections.push({type: kind==='protect'?'protect':'mask', maskCanvas: cnv});
-      state.activeIndex = state.selections.length-1;
-    }
-    let lastPaint = null;
-    function paintOnActiveMask(x, y, fresh){
-      const sel = state.selections[state.activeIndex];
-      if(!sel || !sel.maskCanvas) return;
-      const ctx = sel.maskCanvas.getContext('2d');
-      const size = state.brush.size;
-      const hard = state.brush.hard;
-      const radius = size/2;
-
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
-      const gx = ctx.createRadialGradient(x,y, radius*hard, x,y, radius);
-      const color = (sel.type==='protect') ? 'rgba(255,0,0,1)' : 'rgba(255,255,255,1)';
-      gx.addColorStop(0, color);
-      gx.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = gx;
-
-      if(fresh || !lastPaint){
-        ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2); ctx.fill();
-      } else {
-        const dx = x - lastPaint.x, dy = y - lastPaint.y;
-        const steps = Math.max(1, Math.ceil(Math.hypot(dx,dy) / (radius*0.5)));
-        for(let i=1;i<=steps;i++){
-          const t = i/steps;
-          const px = lastPaint.x + dx*t, py = lastPaint.y + dy*t;
-          ctx.beginPath(); ctx.arc(px,py,radius,0,Math.PI*2); ctx.fill();
-        }
-      }
-      ctx.restore();
-      lastPaint = {x,y};
-    }
-
-    // -------------------------- DUAL MONOCLES --------------------------
-    function updateMonocle(e, where){
-      if(!state.image) return;
-
-      // Move-away behavior: if pointer near monocle, hop to the opposite corner.
-      const hopIfNear = (monoEl, panelRect, side)=>{
-        const padding = 10;
-        const monoRect = monoEl.getBoundingClientRect();
-        const dist = Math.hypot(
-          Math.max(0, Math.max(monoRect.left - e.clientX, e.clientX - monoRect.right)),
-          Math.max(0, Math.max(monoRect.top - e.clientY, e.clientY - monoRect.bottom))
-        );
-        if(dist < 18){
-          // hop
-          if(side==='left'){
-            monoEl.style.left = (panelRect.width - monoRect.width - padding) + 'px';
-            monoEl.style.right = 'auto';
-          } else {
-            monoEl.style.right = (panelRect.width - monoRect.width - padding) + 'px';
-            monoEl.style.left = 'auto';
-          }
-        }else{
-          // restore default side
-          if(side==='left'){
-            monoEl.style.left = padding + 'px';
-            monoEl.style.right = 'auto';
-          } else {
-            monoEl.style.right = padding + 'px';
-            monoEl.style.left = 'auto';
-          }
-        }
+  });
+  dom.editorWrap.addEventListener('keydown', e=>{
+    if(e.code==='Space'){ state.ed.panning = true; dom.editorWrap.classList.add('panning'); }
+  });
+  dom.editorWrap.addEventListener('keyup', e=>{
+    if(e.code==='Space'){ state.ed.panning = false; dom.editorWrap.classList.remove('panning'); }
+  });
+  dom.editorWrap.addEventListener('mousedown', e=>{
+    if(e.button===0 && state.ed.panning){
+      state.ed.panStart=[e.clientX, e.clientY]; state.ed.tx = state.ed.x; state.ed.ty = state.ed.y;
+      const move = (ev)=>{
+        const dx = ev.clientX - state.ed.panStart[0]; const dy = ev.clientY - state.ed.panStart[1];
+        state.ed.x = state.ed.tx + dx; state.ed.y = state.ed.ty + dy; ed.draw(); updateMonocle(ev,'editor');
       };
+      const up = ()=>{
+        window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up);
+        dom.editorWrap.classList.remove('panning');
+      };
+      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+    }
+  });
+  dom.editorWrap.addEventListener('wheel', (e)=>{
+    if(!state.image) return; e.preventDefault();
+    const r = dom.editorCanvas.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const zf = 1.1; const zoom = e.deltaY<0 ? zf : 1/zf;
+    const ns = clamp(state.ed.s*zoom, 0.1, 20);
+    state.ed.x = mx - (mx - state.ed.x)*zoom; state.ed.y = my - (my - state.ed.y)*zoom; state.ed.s = ns;
+    ed.draw(); updateMonocle(e,'editor');
+  }, {passive:false});
+  dom.editorWrap.tabIndex = 0;
 
-      if(where==='editor'){
-        const mCtx = dom.monoLeftCanvas.getContext('2d');
-        if(dom.monoLeftCanvas.width === 0 || dom.monoLeftCanvas.height === 0){
-          dom.monoLeftCanvas.width=148; dom.monoLeftCanvas.height=148;
-        }
-        const rect = dom.editorCanvas.getBoundingClientRect();
-        const cx = (e.clientX - rect.left - state.transform.x)/state.transform.scale;
-        const cy = (e.clientY - rect.top  - state.transform.y)/state.transform.scale;
-
-        const box = 64;
-        const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
-        const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
-
-        mCtx.imageSmoothingEnabled = false;
-        mCtx.clearRect(0,0,dom.monoLeftCanvas.width,dom.monoLeftCanvas.height);
-        mCtx.drawImage(state.image, sx, sy, box, box, 0, 0, dom.monoLeftCanvas.width, dom.monoLeftCanvas.height);
-
-        const fx = ((cx - sx) / box) * dom.monoLeftCanvas.width;
-        const fy = ((cy - sy) / box) * dom.monoLeftCanvas.height;
-        mCtx.strokeStyle = '#0a46ff';
-        mCtx.lineWidth = 1;
-        mCtx.beginPath();
-        mCtx.moveTo(fx, 0); mCtx.lineTo(fx, dom.monoLeftCanvas.height);
-        mCtx.moveTo(0, fy); mCtx.lineTo(dom.monoLeftCanvas.width, fy);
-        mCtx.stroke();
-
-        dom.monocleLeft.style.display = 'block';
-        hopIfNear(dom.monocleLeft, dom.editorWrap.getBoundingClientRect(), 'left');
+  // ---------------- Monocles ----------------
+  function updateMonocle(e, where){
+    if(!state.image) return;
+    const hopIfNear = (monoEl, panelRect, side)=>{
+      const pad=10, mrect = monoEl.getBoundingClientRect();
+      const dx = Math.max(0, Math.max(mrect.left - e.clientX, e.clientX - mrect.right));
+      const dy = Math.max(0, Math.max(mrect.top  - e.clientY, e.clientY - mrect.bottom));
+      const dist = Math.hypot(dx,dy);
+      if(dist<18){
+        if(side==='left'){ monoEl.style.left = (panelRect.width - mrect.width - pad) + 'px'; monoEl.style.right = 'auto'; }
+        else { monoEl.style.right = (panelRect.width - mrect.width - pad) + 'px'; monoEl.style.left = 'auto'; }
       } else {
-        const mCtx = dom.monoRightCanvas.getContext('2d');
-        if(dom.monoRightCanvas.width === 0 || dom.monoRightCanvas.height === 0){
-          dom.monoRightCanvas.width=148; dom.monoRightCanvas.height=148;
-        }
-        const rect = dom.previewCanvas.getBoundingClientRect();
-        const scaleX = state.image.width / Math.max(1, dom.previewCanvas.width);
-        const scaleY = state.image.height / Math.max(1, dom.previewCanvas.height);
-        const cx = (e.clientX - rect.left) * scaleX;
-        const cy = (e.clientY - rect.top ) * scaleY;
-
-        const box = 64;
-        const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
-        const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
-
-        // PREVIEW monocle must show the PREVIEW canvas zoom
-        mCtx.imageSmoothingEnabled = false;
-        mCtx.clearRect(0,0,dom.monoRightCanvas.width,dom.monoRightCanvas.height);
-
-        // Build a small cut from the preview canvas (already filtered+composited)
-        const cut = document.createElement('canvas');
-        cut.width = box; cut.height = box;
-        const cutx = cut.getContext('2d');
-        const px = sx / scaleX;
-        const py = sy / scaleY;
-        cutx.drawImage(dom.previewCanvas, Math.round(px), Math.round(py), Math.round(box/scaleX), Math.round(box/scaleY), 0, 0, box, box);
-
-        mCtx.drawImage(cut, 0, 0, box, box, 0, 0, dom.monoRightCanvas.width, dom.monoRightCanvas.height);
-
-        const fx = ((cx - sx) / box) * dom.monoRightCanvas.width;
-        const fy = ((cy - sy) / box) * dom.monoRightCanvas.height;
-        mCtx.strokeStyle = '#0a46ff';
-        mCtx.lineWidth = 1;
-        mCtx.beginPath();
-        mCtx.moveTo(fx, 0); mCtx.lineTo(fx, dom.monoRightCanvas.height);
-        mCtx.moveTo(0, fy); mCtx.lineTo(dom.monoRightCanvas.width, fy);
-        mCtx.stroke();
-
-        dom.monocleRight.style.display = 'block';
-        hopIfNear(dom.monocleRight, dom.previewWrap.getBoundingClientRect(), 'right');
+        if(side==='left'){ monoEl.style.left = pad+'px'; monoEl.style.right='auto'; }
+        else { monoEl.style.right = pad+'px'; monoEl.style.left='auto'; }
       }
+    };
+
+    if(where==='editor'){
+      const mC = dom.monoLeftCanvas; if(mC.width===0){ mC.width=148; mC.height=148; }
+      const mctx = mC.getContext('2d');
+      const rect = dom.editorCanvas.getBoundingClientRect();
+      const cx = (e.clientX - rect.left - state.ed.x)/state.ed.s;
+      const cy = (e.clientY - rect.top  - state.ed.y)/state.ed.s;
+      const box=64;
+      const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
+      const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
+      mctx.imageSmoothingEnabled = false; mctx.clearRect(0,0,mC.width,mC.height);
+      mctx.drawImage(state.image, sx,sy, box,box, 0,0, mC.width,mC.height);
+      const fx = ((cx - sx)/box) * mC.width; const fy = ((cy - sy)/box) * mC.height;
+      mctx.strokeStyle = '#0a46ff'; mctx.lineWidth = 1; mctx.beginPath(); mctx.moveTo(fx, 0); mctx.lineTo(fx, mC.height); mctx.moveTo(0, fy); mctx.lineTo(mC.width, fy); mctx.stroke();
+      dom.monoLeft.style.display='block'; hopIfNear(dom.monoLeft, dom.editorWrap.getBoundingClientRect(), 'left');
+    } else {
+      const mC = dom.monoRightCanvas; if(mC.width===0){ mC.width=148; mC.height=148; }
+      const mctx = mC.getContext('2d');
+      const rect = dom.previewCanvas.getBoundingClientRect();
+      const scaleX = state.image.width / Math.max(1, dom.previewCanvas.width);
+      const scaleY = state.image.height / Math.max(1, dom.previewCanvas.height);
+      const cx = (e.clientX - rect.left)*scaleX;
+      const cy = (e.clientY - rect.top )*scaleY;
+      const box=64;
+      const sx = Math.floor(clamp(cx - box/2, 0, state.image.width - box));
+      const sy = Math.floor(clamp(cy - box/2, 0, state.image.height - box));
+
+      mctx.imageSmoothingEnabled = false; mctx.clearRect(0,0,mC.width,mC.height);
+      const px = sx/scaleX, py = sy/scaleY; const pw = box/scaleX, ph = box/scaleY;
+      mctx.drawImage(dom.previewCanvas, Math.round(px),Math.round(py), Math.round(pw),Math.round(ph), 0,0, mC.width,mC.height);
+
+      const fx = ((cx - sx)/box) * mC.width; const fy = ((cy - sy)/box) * mC.height;
+      mctx.strokeStyle = '#0a46ff'; mctx.lineWidth = 1; mctx.beginPath(); mctx.moveTo(fx,0); mctx.lineTo(fx,mC.height); mctx.moveTo(0,fy); mctx.lineTo(mC.width,fy); mctx.stroke();
+
+      dom.monoRight.style.display='block'; hopIfNear(dom.monoRight, dom.previewWrap.getBoundingClientRect(), 'right');
     }
+  }
+  dom.editorWrap.addEventListener('mousemove', e=> updateMonocle(e,'editor'));
+  dom.previewWrap.addEventListener('mousemove', e=> updateMonocle(e,'preview'));
+  dom.editorWrap.addEventListener('mouseenter', ()=> dom.monoLeft.style.display='block');
+  dom.previewWrap.addEventListener('mouseenter', ()=> dom.monoRight.style.display='block');
 
-    // -------------------------- AI BAR & PANEL --------------------------
-    dom.aiModeBtn.addEventListener('click', ()=>{
-      setAIMode(!state.ai.active);
-    });
-    dom.aiSegModel.addEventListener('change', ()=>{
-      state.ai.segModel = dom.aiSegModel.value;
-      backgroundPreload(state.ai.segModel);
-      log('AI: segmentation model selected:', state.ai.segModel);
-    });
-    dom.aiDepthModel.addEventListener('change', ()=>{
-      state.ai.depthModel = dom.aiDepthModel.value;
-      backgroundPreload(state.ai.depthModel);
-      log('AI: depth model selected:', state.ai.depthModel);
-    });
-    dom.aiRefine.addEventListener('change', ()=>{
-      state.ai.refine = dom.aiRefine.checked;
-      dom.aiRefine2.checked = state.ai.refine;
-      log('AI refine toggled:', state.ai.refine ? 'ON' : 'OFF');
-    });
-    dom.aiRefine2.addEventListener('change', ()=>{
-      state.ai.refine = dom.aiRefine2.checked;
-      dom.aiRefine.checked = state.ai.refine;
-      log('AI refine toggled:', state.ai.refine ? 'ON' : 'OFF');
-    });
+  // ---------------- Layout ----------------
+  function layoutAll(){
+    ed.updateSize(); ed.fit(); ed.draw(); pv.layout(); pv.render();
+  }
+  window.addEventListener('resize', layoutAll);
 
-    dom.aiUseBtn.addEventListener('click', ()=>{
-      if(!state.image){ alert('Load an image first.'); return; }
-      if(state.ai.segModel==='mobile-sam' && !state.ai.lastClick){
-        log('AI: MobileSAM is promptable. Click on the object in the ORIGINAL panel to segment.');
-      }
-      runAIPipeline({trigger:'use'}).catch(err=>log('AI error:', err?.message || err));
-    });
+  // ---------------- AI Mode ----------------
+  dom.aiToggleBtn.addEventListener('click', ()=>{
+    state.aiActive = !state.aiActive;
+    dom.aiBar.classList.toggle('visible', state.aiActive);
+    dom.aiStatus.textContent = state.aiActive ? 'ready' : 'off';
+    log('AI Mode', state.aiActive ? 'ON' : 'OFF');
+  });
+  dom.refineChk.addEventListener('change', ()=>{ state.refine = dom.refineChk.checked; log('Refine with Depth:', state.refine ? 'ON' : 'OFF'); });
+  dom.effectSel.addEventListener('change', ()=>{ state.effect = dom.effectSel.value; log('Effect:', state.effect); });
 
-    dom.aiFab.addEventListener('click', ()=>{
-      dom.aiPanel.classList.toggle('visible');
-    });
+  // --- Build Seg/Depth dropdowns (with YOUR Releases & Dropbox) ---
+  const BUILTIN_MODELS = {
+    // Segmentation
+    'edgegrow': { type:'seg', label:'No model (EdgeGrow fallback)', url:null, inputSize:640, flavor:'edgegrow' },
+    'gh-yolov8n-seg': { type:'seg', label:'YOLOv8n-seg (GitHub Releases)', url:'https://github.com/nomsams/imgsplash/releases/download/models/yolov8n-seg.onnx', inputSize:640, flavor:'yolov8' },
+    'gh-fastsam-s'  : { type:'seg', label:'FastSAM-s (GitHub Releases)', url:'https://github.com/nomsams/imgsplash/releases/download/models/FastSAM-s.onnx', inputSize:640, flavor:'fastsam' },
+    'gh-fastsam-x'  : { type:'seg', label:'FastSAM-X (GitHub Releases)', url:'https://github.com/nomsams/imgsplash/releases/download/models/FastSam-X.onnx', inputSize:640, flavor:'fastsam' },
+    'db-fastsam-x'  : { type:'seg', label:'FastSAM-X (Dropbox DIRECT)', url:'https://dl.dropboxusercontent.com/scl/fi/hpwyjvgc9yl0mbf2ty9dr/FastSam-X.onnx?rlkey=i9kfkcucagp5tb4qm0m1fgwm5&dl=1', inputSize:640, flavor:'fastsam' },
 
-    // NEW: clear cache
-    dom.clearCacheBtn.addEventListener('click', async ()=>{
-      const ok = confirm('Clear all cached AI models from your browser?');
-      if(!ok) return;
-      await idbClear();
-      // also reset progress UI
-      dom.aiDownloadRows.innerHTML = '';
-      state.ai.downloading = {};
-      log('AI: Cleared model cache.');
-    });
+    // Depth
+    'none': { type:'depth', label:'None', url:null, inputSize:256, flavor:'none' },
+    'gh-midas-small': { type:'depth', label:'MiDaS v2.1 Small (GitHub Releases)', url:'https://github.com/nomsams/imgsplash/releases/download/models/midas_small.onnx', inputSize:256, flavor:'midas' },
+    'gh-da-v2-small': { type:'depth', label:'Depth Anything V2 Small FP32 (GitHub Releases)', url:'https://github.com/nomsams/imgsplash/releases/download/models/depth_anything_v2_small.onnx', inputSize:518, flavor:'depth-anything' },
+    'gh-da-v2-small-int8': { type:'depth', label:'Depth Anything V2 Small INT8 (GitHub Releases)', url:'https://github.com/nomsams/imgsplash/releases/download/models/depth_anything_v2_small_int8.onnx', inputSize:518, flavor:'depth-anything' },
+    'db-midas-small': { type:'depth', label:'MiDaS v2.1 Small (Dropbox DIRECT)', url:'https://dl.dropboxusercontent.com/scl/fi/ljsrtwxbd5oscq6hgthrk/midas_small.onnx?rlkey=emtxd6xhxsjrpq8j2jbabqoxn&dl=1', inputSize:256, flavor:'midas' },
+    'db-da-v2-small': { type:'depth', label:'Depth Anything V2 Small (Dropbox DIRECT)', url:'https://dl.dropboxusercontent.com/scl/fi/oif7z9iap5ua1wlef04e3/depth_anything_v2_small.onnx?rlkey=tfv2lz4xalrxp30fmoes006gy&dl=1', inputSize:518, flavor:'depth-anything' },
+    'db-da-v2-small-int8': { type:'depth', label:'Depth Anything V2 Small INT8 (Dropbox DIRECT)', url:'https://www.dropbox.com/scl/fi/8brcbml22th9om9axdv5t/depth_anything_v2_small_int8.onnx?rlkey=rqkjeu0bd222xx9sr13qdywnz&st=rqlxaq1n&dl=1', inputSize:518, flavor:'depth-anything' },
 
-    function setAIMode(flag){
-      state.ai.active = !!flag;
-      state.modeGroup = flag ? 'ai' : 'manual';
-      setAIModeUI();
-      if(flag){
-        backgroundPreload(state.ai.segModel);
-        backgroundPreload(state.ai.depthModel);
-        log('AI Mode ON. Choose models and click on the object in ORIGINAL, or press Use.');
-      } else {
-        log('AI Mode OFF. Manual tools active.');
-      }
-      history.save();
+    // Placeholders for imports
+    'upload-seg': { type:'seg', label:'Import Seg ONNX…', url:null, inputSize:640, flavor:'custom' },
+    'url-seg':    { type:'seg', label:'Load Seg from URL…', url:null, inputSize:640, flavor:'custom' },
+    'custom-seg': { type:'seg', label:'[Cached] Custom Seg', url:null, inputSize:640, flavor:'custom' },
+
+    'upload-depth': { type:'depth', label:'Import Depth ONNX…', url:null, inputSize:256, flavor:'custom' },
+    'url-depth':    { type:'depth', label:'Load Depth from URL…', url:null, inputSize:256, flavor:'custom' },
+    'custom-depth': { type:'depth', label:'[Cached] Custom Depth', url:null, inputSize:256, flavor:'custom' },
+  };
+
+  function buildDropdowns(){
+    // segmentation
+    dom.segSel.innerHTML = '';
+    addOpt(dom.segSel, 'edgegrow', BUILTIN_MODELS['edgegrow'].label);
+    addOpt(dom.segSel, 'upload-seg', BUILTIN_MODELS['upload-seg'].label);
+    addOpt(dom.segSel, 'url-seg', BUILTIN_MODELS['url-seg'].label);
+    addOpt(dom.segSel, 'custom-seg', BUILTIN_MODELS['custom-seg'].label);
+    addOpt(dom.segSel, 'gh-yolov8n-seg', BUILTIN_MODELS['gh-yolov8n-seg'].label);
+    addOpt(dom.segSel, 'gh-fastsam-s', BUILTIN_MODELS['gh-fastsam-s'].label);
+    addOpt(dom.segSel, 'gh-fastsam-x', BUILTIN_MODELS['gh-fastsam-x'].label);
+    addOpt(dom.segSel, 'db-fastsam-x', BUILTIN_MODELS['db-fastsam-x'].label);
+
+    // depth
+    dom.depthSel.innerHTML = '';
+    addOpt(dom.depthSel, 'none', BUILTIN_MODELS['none'].label);
+    addOpt(dom.depthSel, 'upload-depth', BUILTIN_MODELS['upload-depth'].label);
+    addOpt(dom.depthSel, 'url-depth', BUILTIN_MODELS['url-depth'].label);
+    addOpt(dom.depthSel, 'custom-depth', BUILTIN_MODELS['custom-depth'].label);
+    addOpt(dom.depthSel, 'gh-midas-small', BUILTIN_MODELS['gh-midas-small'].label);
+    addOpt(dom.depthSel, 'gh-da-v2-small', BUILTIN_MODELS['gh-da-v2-small'].label);
+    addOpt(dom.depthSel, 'gh-da-v2-small-int8', BUILTIN_MODELS['gh-da-v2-small-int8'].label);
+    addOpt(dom.depthSel, 'db-midas-small', BUILTIN_MODELS['db-midas-small'].label);
+    addOpt(dom.depthSel, 'db-da-v2-small', BUILTIN_MODELS['db-da-v2-small'].label);
+    addOpt(dom.depthSel, 'db-da-v2-small-int8', BUILTIN_MODELS['db-da-v2-small-int8'].label);
+
+    dom.segSel.value = state.segKey;
+    dom.depthSel.value = state.depthKey;
+  }
+  function addOpt(sel, val, label){ const o=document.createElement('option'); o.value=val; o.textContent=label; sel.appendChild(o); }
+
+  // dynamic model registry
+  Object.assign(state.models, BUILTIN_MODELS);
+  buildDropdowns();
+
+  dom.segSel.addEventListener('change', async ()=>{
+    const v = dom.segSel.value;
+    if(v==='upload-seg'){ dom.segInput.click(); dom.segSel.value = state.segKey; return; }
+    if(v==='url-seg'){
+      const url = prompt('Enter DIRECT/CORS-enabled URL to segmentation ONNX (GitHub Releases/Dropbox or same-origin):');
+      if(url){ await cacheUrlToKey('custom-seg', url, 'seg'); dom.segSel.value = 'custom-seg'; state.segKey = 'custom-seg'; }
+      return;
     }
-    function setAIModeUI(){
-      dom.aiModeBtn.classList.toggle('active', state.ai.active);
-      dom.aiBar.classList.toggle('visible', state.ai.active);
-      dom.aiSegModel.value = state.ai.segModel;
-      dom.aiDepthModel.value = state.ai.depthModel;
-      dom.aiRefine.checked = state.ai.refine;
-      dom.aiRefine2.checked = state.ai.refine;
-      dom.aiStatus.textContent = state.ai.active ? 'AI mode: ready' : 'AI mode: off';
+    state.segKey = v;
+    if(v!=='edgegrow' && v!=='custom-seg'){
+      ensureSession(v).catch(e=> log('Seg preload failed:', e?.message||e));
     }
+    log('Segmentation model:', v);
+  });
 
-    // -------------------------- RUNTIME DETECTION --------------------------
-    async function detectRuntime(){
-      try{
-        const gpuAdapter = await navigator.gpu?.requestAdapter();
-        const gpuAvailable = !!ort.env.webgpu && gpuAdapter!=null;
-        dom.aiRuntimeChip.textContent = gpuAvailable ? 'WebGPU + WASM fallback' : 'WASM only';
-        log('Runtime:', dom.aiRuntimeChip.textContent);
-      }catch{ dom.aiRuntimeChip.textContent = 'WASM only'; }
+  dom.depthSel.addEventListener('change', async ()=>{
+    const v = dom.depthSel.value;
+    if(v==='upload-depth'){ dom.depthInput.click(); dom.depthSel.value = state.depthKey; return; }
+    if(v==='url-depth'){
+      const url = prompt('Enter DIRECT/CORS-enabled URL to depth ONNX (GitHub Releases/Dropbox or same-origin):');
+      if(url){ await cacheUrlToKey('custom-depth', url, 'depth'); dom.depthSel.value = 'custom-depth'; state.depthKey = 'custom-depth'; }
+      return;
     }
-
-    // -------------------------- MODEL LOADING (ORT WEB) --------------------------
-    async function ensureORTSession(key){
-      if(state.ai.sessions[key]) return state.ai.sessions[key];
-
-      const entry = MODEL_URLS[key];
-      if(!entry) throw new Error('Unknown model key: '+key);
-
-      ensureDlRow(key);
-
-      // Pick providers with fallback
-      let providers = ['wasm'];
-      try{
-        const gpuAdapter = await navigator.gpu?.requestAdapter();
-        if(ort.env.webgpu && gpuAdapter){ providers = ['webgpu','wasm']; }
-      }catch{ /* keep wasm */ }
-
-      dom.aiStatus.textContent = `loading ${key}…`;
-      log(`AI: Preparing model ${key} (${entry.sizeHintMB} MB)…`);
-
-      let session = null;
-      const t0 = now();
-
-      // Try cached/downloaded ArrayBuffer first (with progress)
-      try{
-        const buf = await downloadModelBinary(key);
-        setDlStatus(key, `initializing…`);
-        try{
-          session = await ort.InferenceSession.create(buf, {
-            executionProviders: providers,
-            graphOptimizationLevel: 'all',
-          });
-        }catch(inner){
-          log(`AI: Session create (buffer) failed for ${key} (${providers[0]}). Trying WASM only…`);
-          // fallback to WASM only
-          session = await ort.InferenceSession.create(buf, {
-            executionProviders: ['wasm'],
-            graphOptimizationLevel: 'all',
-          });
-        }
-      }catch(downloadErr){
-        log(`AI: Could not stream ${key} with progress; letting ORT fetch URL directly as fallback.`);
-        // Fallback to ORT internal URL fetch
-        try{
-          session = await ort.InferenceSession.create(entry.url, {
-            executionProviders: providers,
-            graphOptimizationLevel: 'all',
-          });
-        }catch(f2){
-          log(`AI: Final fallback to WASM-only URL path for ${key}…`);
-          session = await ort.InferenceSession.create(entry.url, {
-            executionProviders: ['wasm'],
-            graphOptimizationLevel: 'all',
-          });
-        }
-      }
-
-      const t1 = now();
-      const dt = Math.max(1, Math.round(t1-t0));
-      log(`AI: Model ${key} ready in ${dt} ms using ${session.executionProvider || providers[0]}.\n`);
-      state.ai.sessions[key] = session;
-      dom.aiStatus.textContent = `loaded ${key}`;
-      setDlStatus(key, `loaded`);
-      setDlPercent(key, 100);
-      return session;
+    state.depthKey = v;
+    if(v!=='none' && v!=='custom-depth'){
+      ensureSession(v).catch(e=> log('Depth preload failed:', e?.message||e));
     }
+    log('Depth model:', v);
+  });
 
-    function backgroundPreload(key){
-      if(state.ai.preloading[key]) return;
-      state.ai.preloading[key] = true;
-      ensureDlRow(key);
-      ensureORTSession(key)
-        .then(()=>{ state.ai.preloading[key] = false; })
-        .catch(err=>{
-          log(`AI preload failed for ${key}:`, err?.message||err);
-          setDlStatus(key, 'error (preload)');
-          state.ai.preloading[key] = false;
-        });
+  // File imports
+  dom.segInput.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    try{
+      const buf = await f.arrayBuffer();
+      await idbSet('custom-seg', buf);
+      state.cachedBuffers['custom-seg'] = new Uint8Array(buf);
+      state.sessions['custom-seg'] = null;
+      state.segKey = 'custom-seg';
+      dom.segSel.value = 'custom-seg';
+      log(`Imported segmentation ONNX (${f.name}) into cache (key: custom-seg).`);
+    }catch(err){ log('Import seg failed:', err?.message||err); }
+  });
+  dom.depthInput.addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    try{
+      const buf = await f.arrayBuffer();
+      await idbSet('custom-depth', buf);
+      state.cachedBuffers['custom-depth'] = new Uint8Array(buf);
+      state.sessions['custom-depth'] = null;
+      state.depthKey = 'custom-depth';
+      dom.depthSel.value = 'custom-depth';
+      log(`Imported depth ONNX (${f.name}) into cache (key: custom-depth).`);
+    }catch(err){ log('Import depth failed:', err?.message||err); }
+  });
+
+  // Add Models JSON (user paste)
+  dom.addJsonBtn.addEventListener('click', ()=>{
+    const txt = prompt('Paste JSON array with {"name","direct_download_url"} per entry. These will be added as custom models.\nExample:\n[\n {"name":"YOLOv8n-Seg (Releases)","direct_download_url":"https://.../yolov8n-seg.onnx"},\n {"name":"MiDaS Small (Releases)","direct_download_url":"https://.../midas_small.onnx"}\n]\n\nNOTE: Choose appropriate target dropdown afterwards and use "Load ... from URL…" to cache.');
+    if(!txt) return;
+    try{
+      const arr = JSON.parse(txt);
+      if(!Array.isArray(arr)) throw new Error('Not an array');
+      let added=0;
+      for(const it of arr){
+        if(!it || !it.name || !it.direct_download_url) continue;
+        const url = String(it.direct_download_url);
+        // Heuristic: treat "seg" if file name contains seg|fastsam etc., else "depth"
+        const lower = url.toLowerCase();
+        const type = (lower.includes('seg') || lower.includes('fastsam') || lower.includes('mask')) ? 'seg' : 'depth';
+        const key = 'user-' + Math.random().toString(36).slice(2,9);
+        state.models[key] = { type, label: it.name + ' (User)', url, inputSize: type==='seg'?640:256, flavor: type==='seg'?'yolov8':'midas' };
+        added++;
+      }
+      if(added>0){ log(`Added ${added} model entries. Use "Load from URL…" to cache into IndexedDB.`); }
+      else { log('No valid entries found in JSON.'); }
+    }catch(err){
+      log('Invalid JSON:', err?.message||err);
     }
+  });
 
-    // -------------------------- AI PIPELINE --------------------------
-    async function runAIPipeline({trigger}={}){
-      if(!state.image){ return; }
-      state.modeGroup = 'ai';
-      startProgress();
-      dom.aiOutputs.classList.remove('visible');
+  // Use button
+  dom.useBtn.addEventListener('click', ()=>{
+    if(!state.image){ alert('Upload an image first.'); return; }
+    if(!state.seed){ alert('Click the object in the ORIGINAL panel to set a seed first.'); return; }
+    runAIPipeline('use').catch(err=> log('AI error:', err?.message||err));
+  });
 
-      // 1) Load models (background may have started already)
-      let segSess=null, depthSess=null;
-      try{
-        segSess = await ensureORTSession(state.ai.segModel);
-      }catch(err){
-        log('AI: Segmentation model failed, falling back to EdgeGrow:', String(err));
-      }
-      try{
-        depthSess = await ensureORTSession(state.ai.depthModel);
-      }catch(err){
-        log('AI: Depth model failed, will skip depth refine:', String(err));
-      }
+  // ---------------- Model & ORT ----------------
+  async function ensureSession(key){
+    if(!key) return null;
+    if(key==='edgegrow' || key==='none') return null;
+    if(state.sessions[key]) return state.sessions[key];
 
-      // 2) Prepare inputs
-      const segKey = state.ai.segModel;
-      const depthKey = state.ai.depthModel;
-      const img = state.image;
+    const info = state.models[key] || BUILTIN_MODELS[key];
+    if(!info) throw new Error('Unknown model key: '+key);
+    const providers = await pickProviders();
 
-      // seed (if needed)
-      let seed = state.ai.lastClick;
-      if((segKey==='mobile-sam') && !seed){
-        dom.aiStatus.textContent = 'awaiting click (MobileSAM needs a point)…';
-        finishProgress();
-        return;
-      }
+    dom.aiStatus.textContent = `loading ${key}…`;
+    startProgress();
 
-      // 3) SEGMENTATION
-      let aiMaskCanvas = null;
-      try{
-        if(segKey==='yolov8n-seg' || segKey==='yolo11n-seg' || segKey==='fastsam-s'){
-          aiMaskCanvas = await segWithYOLO(segSess, img, MODEL_URLS[segKey].inputSize, seed);
-        } else if(segKey==='mobile-sam'){
-          aiMaskCanvas = await segWithMobileSAM(segSess, img, MODEL_URLS[segKey].inputSize, seed);
-        } else {
-          throw new Error('Unknown seg model');
-        }
-        if(!aiMaskCanvas) throw new Error('No mask produced');
-        state.ai.outputs.maskCanvas = aiMaskCanvas;
-      }catch(err){
-        log('AI: Segmentation failed → fallback to worker EdgeGrow:', err?.message||err);
-        if(seed){
-          await requestSegMask('autoSmart', seed.x, seed.y, state.tol, state.aggr);
-          state.ai.outputs.maskCanvas = null; // using selection stack instead
-        }else{
-          // fallback center
-          const sx = Math.round(img.width/2), sy = Math.round(img.height/2);
-          await requestSegMask('autoSmart', sx, sy, state.tol, state.aggr);
-        }
-      }
-
-      // 4) DEPTH
-      let depthCanvas = null, depthMap = null;
-      try{
-        if(depthSess){
-          const depthRes = await depthPredict(depthSess, img, MODEL_URLS[depthKey].inputSize);
-          depthMap = depthRes.map; depthCanvas = depthRes.canvas;
-          state.ai.outputs.depth = depthMap;
-          state.ai.outputs.depthCanvas = depthCanvas;
-        }
-      }catch(err){
-        log('AI: Depth estimation failed:', err?.message||err);
-      }
-
-      // 5) (Optional) REFINE with Fancy Math (depth-aware + EdgeGrow)
-      let finalMask = null;
-      try{
-        if(state.ai.refine){
-          const baseMask = aiMaskCanvas || lastMaskFromSelections();
-          if(baseMask && depthMap && (seed||{x:Math.round(img.width/2),y:Math.round(img.height/2)})){
-            finalMask = refineWithDepthAndEdges(baseMask, depthMap, img.width, img.height, seed||{x:Math.round(img.width/2),y:Math.round(img.height/2)});
-          } else {
-            finalMask = baseMask;
-          }
-        } else {
-          finalMask = aiMaskCanvas || lastMaskFromSelections();
-        }
-      }catch(err){
-        log('AI: Refine failed; using base mask. Reason:', err?.message||err);
-        finalMask = aiMaskCanvas || lastMaskFromSelections();
-      }
-
-      // 6) Show AI outputs thumbnails BEFORE applying effect
-      try{
-        if(aiMaskCanvas){
-          const mthumb = dom.aiMaskThumb.getContext('2d');
-          const tw = dom.aiMaskThumb.width = 132, th = dom.aiMaskThumb.height = Math.round(132 * (img.height/img.width));
-          mthumb.imageSmoothingEnabled = false;
-          mthumb.clearRect(0,0,tw,th);
-          mthumb.drawImage(aiMaskCanvas, 0,0, tw,th);
-        }
-        if(depthCanvas){
-          const dthumb = dom.aiDepthThumb.getContext('2d');
-          const tw = dom.aiDepthThumb.width = 132, th = dom.aiDepthThumb.height = Math.round(132 * (img.height/img.width));
-          dthumb.imageSmoothingEnabled = false;
-          dthumb.clearRect(0,0,tw,th);
-          dthumb.drawImage(depthCanvas, 0,0, tw,th);
-        }
-        if(aiMaskCanvas || depthCanvas){
-          dom.aiOutputs.classList.add('visible');
-        }
-      }catch{}
-
-      // 7) Inject/replace AI selection & render
-      if(finalMask){
-        state.ai.outputs.finalMask = finalMask;
-        log('AI: Final mask ready; updating preview…');
-      }
-      schedulePreviewRender(true);
-      history.save();
-    }
-
-    function lastMaskFromSelections(){
-      for(let i=state.selections.length-1;i>=0;i--){
-        const s = state.selections[i];
-        if(s.type==='mask' && s.maskCanvas) return s.maskCanvas;
-      }
-      return null;
-    }
-
-    // -------------------------- YOLO / FastSAM SEGMENTATION (ONNX) --------------------------
-    async function segWithYOLO(session, img, inputSize, seed){
-      let prepared = makeLetterboxInput(img, inputSize, /*layout*/'nhwc');
-      let feeds = {};
-      let inputName = getFirstInputName(session) || 'images';
-      feeds[inputName] = prepared.tensor;
-
-      let outputs;
-      try{
-        outputs = await session.run(feeds);
-      }catch(runErr){
-        // Try NCHW transpose if model expects it
-        try{
-          prepared = makeLetterboxInput(img, inputSize, 'nchw');
-          feeds[inputName] = prepared.tensor;
-          outputs = await session.run(feeds);
-        }catch(err2){
-          throw runErr;
-        }
-      }
-
-      // Common outputs: detection + proto
-      const names = Object.keys(outputs);
-      if(names.length<2) throw new Error('Unexpected outputs for YOLO');
-      const det = outputs[names[0]];
-      const proto = outputs[names[1]];
-
-      const detData = det.data;
-      const detShape = det.dims; // [1, num, channels]
-      const protoData = proto.data;
-      const protoShape = proto.dims; // [1, mask_dim, mh, mw] or [1, mh, mw, mask_dim]
-
-      // Normalize proto to [maskDim, mh, mw]
-      let maskDim, mh, mw;
-      if(protoShape.length===4 && protoShape[1] > 4){
-        maskDim = protoShape[1]; mh = protoShape[2]; mw = protoShape[3];
-      }else if(protoShape.length===4){
-        // NHWC-ish
-        maskDim = protoShape[3]; mh = protoShape[1]; mw = protoShape[2];
+    let session = null;
+    try{
+      let bytes = null;
+      if(state.cachedBuffers[key]){
+        bytes = state.cachedBuffers[key];
+        log(`Creating session from cached buffer: ${key} (${bytes.byteLength} bytes)`);
+        session = await ort.InferenceSession.create(bytes, { executionProviders: providers, graphOptimizationLevel:'all' });
+      }else if(info.url){
+        const buf = await fetchAsBufferCORS(info.url);
+        const u8 = new Uint8Array(buf);
+        state.cachedBuffers[key] = u8;
+        log(`Fetched ONNX: ${info.url} (${u8.byteLength} bytes)`);
+        session = await ort.InferenceSession.create(u8, { executionProviders: providers, graphOptimizationLevel:'all' });
       }else{
-        throw new Error('Proto shape unsupported');
+        // custom-seg/depth from IDB
+        const ib = await idbGet(key);
+        if(!ib) throw new Error(`No cached buffer in IDB for ${key}. Import it first.`);
+        const u8 = new Uint8Array(ib);
+        state.cachedBuffers[key] = u8;
+        log(`Loaded ONNX from IDB (${key}, ${u8.byteLength} bytes).`);
+        session = await ort.InferenceSession.create(u8, { executionProviders: providers, graphOptimizationLevel:'all' });
       }
+      state.sessions[key] = session;
+      dom.aiStatus.textContent = `loaded ${key}`;
+      finishProgress();
+      return session;
+    }catch(err){
+      finishProgress();
+      dom.aiStatus.textContent = `failed ${key}`;
+      log(`Model load failed for ${key}:`, err?.message||err);
+      throw err;
+    }
+  }
 
-      const num = detShape[1];
-      const ch = detShape[2];
-      const clsCount = ch - 4 - 1 - maskDim;
+  async function pickProviders(){
+    try{
+      const adapter = await navigator.gpu?.requestAdapter();
+      if(adapter && ort.env.webgpu){ return ['webgpu','wasm']; }
+    }catch{}
+    return ['wasm'];
+  }
+
+  async function fetchAsBufferCORS(url){
+    try{
+      const res = await fetch(url, {cache:'no-store', mode:'cors', redirect:'follow'});
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.arrayBuffer();
+    }catch(err){
+      log('Fetch failed (CORS/HTTP):', url, err?.message||err);
+      throw err;
+    }
+  }
+
+  async function cacheUrlToKey(key, url, type){
+    try{
+      const buf = await fetchAsBufferCORS(url);
+      await idbSet(key, buf);
+      state.cachedBuffers[key] = new Uint8Array(buf);
+      state.sessions[key] = null;
+      log(`Cached ${type} model from URL to IDB (key: ${key}, ${Math.round(buf.byteLength/1024)} KB).`);
+    }catch(err){
+      log(`URL cache failed for ${key}:`, err?.message||err);
+    }
+  }
+
+  // ---------------- AI Pipeline ----------------
+  async function runAIPipeline(trigger){
+    if(!state.image || !state.seed) return;
+    startProgress();
+    dom.aiThumbs.classList.remove('visible');
+
+    // 1) Segmentation (or EdgeGrow) to get a base mask
+    let baseMask = null;
+    try{
+      if(state.segKey==='edgegrow'){
+        baseMask = edgeGrowMask(state.image, state.seed.x, state.seed.y);
+      }else{
+        const segSession = await ensureSession(state.segKey);
+        baseMask = await runSegmentation(segSession, state.segKey, state.image, state.seed);
+        if(!baseMask){
+          log('Seg produced no mask; using EdgeGrow fallback.');
+          baseMask = edgeGrowMask(state.image, state.seed.x, state.seed.y);
+        }
+      }
+    }catch(err){
+      log('Segmentation failed → EdgeGrow fallback:', err?.message||err);
+      baseMask = edgeGrowMask(state.image, state.seed.x, state.seed.y);
+    }
+
+    // 2) Depth (if requested)
+    let depthCanvas = null, depthMap = null;
+    if(state.depthKey!=='none' || state.refine || state.effect.includes('depth') || state.effect==='depth-band' || state.effect==='depth-thresh'){
+      try{
+        if(state.depthKey==='none'){
+          // no explicit model; but some effects need depth → we can’t synthesize it → skip
+          log('Depth not selected; depth-dependent effects will behave as no-depth.');
+        }else{
+          const depthSession = await ensureSession(state.depthKey);
+          const dep = await runDepth(depthSession, state.depthKey, state.image);
+          depthCanvas = dep.canvas;
+          depthMap = dep.map;
+        }
+      }catch(err){
+        log('Depth failed; continuing without depth:', err?.message||err);
+      }
+    }
+
+    // 3) Store & thumbnails
+    state.maskCanvas = baseMask;
+    state.depthCanvas = depthCanvas || null;
+    state.depthMap = depthMap || null;
+
+    try{
+      const mt = dom.maskThumb.getContext('2d');
+      const tw = dom.maskThumb.width = 160, th = dom.maskThumb.height = Math.round(160 * (state.image.height/state.image.width));
+      mt.imageSmoothingEnabled = false; mt.clearRect(0,0,tw,th);
+      mt.drawImage(baseMask,0,0, tw, th);
+
+      const dt = dom.depthThumb.getContext('2d');
+      const tw2 = dom.depthThumb.width = 160, th2 = dom.depthThumb.height = Math.round(160 * (state.image.height/state.image.width));
+      dt.imageSmoothingEnabled = false; dt.clearRect(0,0,tw2,th2);
+      if(depthCanvas) dt.drawImage(depthCanvas,0,0, tw2,th2);
+      dom.aiThumbs.classList.add('visible');
+    }catch{}
+
+    // 4) Render preview with EFFECT combination
+    pv.layout(); pv.render();
+    finishProgress();
+    log('Preview rendered (effect:', state.effect, ').');
+  }
+
+  // ---------------- Segmentation (YOLO-like + Fallback) ----------------
+  async function runSegmentation(session, key, img, seed){
+    const info = state.models[key] || BUILTIN_MODELS[key] || {inputSize:640, flavor:'yolov8'};
+    const size = info.inputSize || 640;
+    const flavor = info.flavor;
+
+    if(flavor==='yolov8' || flavor==='fastsam' || flavor==='custom'){
+      const {tensor, scale, dx, dy} = makeLetterboxInput(img, size);
+      const feeds = {};
+      const inputName = session.inputNames?.[0] || 'images';
+      feeds[inputName] = tensor;
+
+      const outputs = await session.run(feeds);
+      const outNames = Object.keys(outputs);
+      if(outNames.length<2) throw new Error('Unexpected seg outputs');
+      const det = outputs[outNames[0]];  // [1, num, ch]
+      const proto = outputs[outNames[1]]; // [1, maskDim, mh, mw]
+
+      const detData = det.data, detShape = det.dims;
+      const protoData = proto.data, protoShape = proto.dims;
+      const num = detShape[1], ch = detShape[2];
+      const maskDim = protoShape[1], mw = protoShape[3], mh = protoShape[2];
+      const clsCount = ch - 4 - 1 - maskDim; // xywh, obj, classes, mask-coeffs
       const stride = ch;
 
-      const candidates = [];
+      const cand = [];
       for(let i=0;i<num;i++){
         const off = i*stride;
         const cx = detData[off+0], cy = detData[off+1], bw = detData[off+2], bh = detData[off+3];
         const conf = detData[off+4];
         if(conf<0.2) continue;
-        let bestCls = -1, bestSc = -1;
+        let best=-1, bsc=-1;
         for(let c=0;c<clsCount;c++){
           const sc = detData[off+5+c];
-          if(sc>bestSc){ bestSc=sc; bestCls=c; }
+          if(sc>bsc){ bsc=sc; best=c; }
         }
-        const score = conf * bestSc;
-        if(score < 0.25) continue;
-
+        const score = conf * (bsc>0?bsc:1);
+        if(score<0.25) continue;
         const coeff = detData.slice(off+5+clsCount, off+5+clsCount+maskDim);
         const x1 = cx - bw/2, y1 = cy - bh/2, x2 = cx + bw/2, y2 = cy + bh/2;
-        candidates.push({x1,y1,x2,y2, score, coeff});
+        cand.push({x1,y1,x2,y2,score,coeff});
       }
-
-      // NMS
-      candidates.sort((a,b)=>b.score-a.score);
-      const keep=[];
-      const iouThr = 0.5;
-      for(const a of candidates){
-        let keepFlag = true;
-        for(const b of keep){
-          if(IOU(a,b)>iouThr){ keepFlag=false; break; }
-        }
-        if(keepFlag) keep.push(a);
-        if(keep.length>20) break;
-      }
-
+      cand.sort((a,b)=> b.score - a.score);
+      const keep = nms(cand, 0.5).slice(0,20);
       if(keep.length===0) return null;
 
-      // Decode masks
-      const chosen = await decodeYOLOMaskAndChoose(
-        keep, protoData, maskDim, mw, mh, inputSize,
-        prepared.scale, prepared.dx, prepared.dy, img.width, img.height, seed
-      );
-      return chosen;
+      const mask = await decodeYOLOMaskChoose(keep, protoData, maskDim, mw, mh, size, scale, dx, dy, img.width, img.height, seed);
+      return mask;
     }
 
-    function IOU(a,b){
-      const xx1 = Math.max(a.x1,b.x1), yy1 = Math.max(a.y1,b.y1);
-      const xx2 = Math.min(a.x2,b.x2), yy2 = Math.min(a.y2,b.y2);
-      const w = Math.max(0, xx2-xx1), h = Math.max(0, yy2-yy1);
-      const inter = w*h;
-      const areaA = (a.x2-a.x1)*(a.y2-a.y1);
-      const areaB = (b.x2-b.x1)*(b.y2-b.y1);
-      return inter / Math.max(1e-6, areaA + areaB - inter);
-    }
+    // Fallback
+    return edgeGrowMask(img, seed.x, seed.y);
+  }
 
-    async function decodeYOLOMaskAndChoose(keep, protoData, maskDim, mw, mh, inputSize, scale, dx, dy, outW, outH, seed){
-      // P: [maskDim, mh*mw]
-      const P = new Float32Array(maskDim*mw*mh);
-      // Normalize protoData to [maskDim, mh, mw]
-      if(protoData.length === maskDim*mw*mh){
-        P.set(protoData);
-      } else {
-        // If NHWC-like, permute (mh,mw,maskDim) -> (maskDim,mh,mw)
-        // We do a best-effort reorder
-        for(let y=0;y<mh;y++){
-          for(let x=0;x<mw;x++){
-            for(let k=0;k<maskDim;k++){
-              P[k*mw*mh + (y*mw+x)] = protoData[(y*mw+x)*maskDim + k];
-            }
-          }
-        }
+  function makeLetterboxInput(img, size){
+    const c = document.createElement('canvas'); c.width=size; c.height=size;
+    const x = c.getContext('2d'); x.fillStyle='#000'; x.fillRect(0,0,size,size);
+    const r = Math.min(size/img.width, size/img.height);
+    const nw = Math.round(img.width*r), nh = Math.round(img.height*r);
+    const dx = Math.floor((size-nw)/2), dy = Math.floor((size-nh)/2);
+    x.drawImage(img, dx,dy,nw,nh);
+
+    const id = x.getImageData(0,0,size,size).data;
+    const arr = new Float32Array(size*size*3);
+    for(let i=0,j=0;i<id.length;i+=4){
+      arr[j++]=id[i]/255; arr[j++]=id[i+1]/255; arr[j++]=id[i+2]/255;
+    }
+    const t = new ort.Tensor('float32', arr, [1,size,size,3]); // NHWC
+    return {tensor:t, scale:r, dx, dy};
+  }
+
+  function nms(cand, iouThr){
+    const keep=[];
+    for(const a of cand){
+      let ok=true;
+      for(const b of keep){
+        const iou = IOU(a,b);
+        if(iou>iouThr){ ok=false; break; }
       }
+      if(ok) keep.push(a);
+    }
+    return keep;
+  }
+  function IOU(a,b){
+    const xx1 = Math.max(a.x1,b.x1), yy1 = Math.max(a.y1,b.y1);
+    const xx2 = Math.min(a.x2,b.x2), yy2 = Math.min(a.y2,b.y2);
+    const w = Math.max(0, xx2-xx1), h = Math.max(0, yy2-yy1);
+    const inter = w*h;
+    const areaA = (a.x2-a.x1)*(a.y2-a.y1);
+    const areaB = (b.x2-b.x1)*(b.y2-b.y1);
+    return inter / Math.max(1e-6, areaA + areaB - inter);
+  }
 
-      let bestCanvas = null;
-      let bestScore = -1;
+  async function decodeYOLOMaskChoose(keep, protoData, maskDim, mw, mh, inputSize, scale, dx, dy, outW, outH, seed){
+    const P = new Float32Array(maskDim*mw*mh); P.set(protoData);
+    let bestCanvas=null, bestScore=-1;
 
-      for(const det of keep){
-        const c = det.coeff;
-        const m = new Float32Array(mw*mh);
-        for(let i=0;i<mw*mh;i++){
-          let s=0;
-          for(let k=0;k<maskDim;k++){
-            s += P[k*mw*mh + i] * c[k];
-          }
-          m[i] = 1/(1+Math.exp(-s));
-        }
-
-        // upscale to output image size via letterbox inverse
-        const maskCanvas = document.createElement('canvas');
-        maskCanvas.width = outW; maskCanvas.height = outH;
-        const mctx = maskCanvas.getContext('2d');
-        const small = document.createElement('canvas');
-        small.width = mw; small.height = mh;
-        const sctx = small.getContext('2d');
-        const id = sctx.createImageData(mw, mh);
-        for(let y=0;y<mh;y++){
-          for(let x=0;x<mw;x++){
-            const v = Math.round(255 * clamp(m[y*mw+x],0,1));
-            const i = (y*mw+x)*4;
-            id.data[i+0]=255; id.data[i+1]=255; id.data[i+2]=255; id.data[i+3]=v;
-          }
-        }
-        sctx.putImageData(id,0,0);
-        mctx.clearRect(0,0,outW,outH);
-        mctx.globalAlpha = 1;
-        mctx.drawImage(small, 0,0, inputSize, inputSize, -dx, -dy, inputSize/scale, inputSize/scale);
-
-        if(seed){
-          const hit = maskHit(maskCanvas, seed.x, seed.y);
-          if(hit){
-            bestCanvas = maskCanvas; break;
-          } else {
-            const cx = (det.x1+det.x2)/2, cy = (det.y1+det.y2)/2;
-            const dist = Math.hypot(seed.x - (cx-dx)/scale, seed.y - (cy-dy)/scale);
-            const score = det.score / (1+0.001*dist);
-            if(score>bestScore){ bestScore=score; bestCanvas=maskCanvas; }
-          }
-        } else {
-          const score = det.score;
-          if(score>bestScore){ bestScore=score; bestCanvas=maskCanvas; }
-        }
+    for(const det of keep){
+      const c = det.coeff;
+      const flat = new Float32Array(mw*mh);
+      for(let i=0;i<mw*mh;i++){
+        let s=0;
+        for(let k=0;k<maskDim;k++){ s += P[k*mw*mh + i] * c[k]; }
+        flat[i] = 1/(1+Math.exp(-s));
       }
-      return bestCanvas;
-    }
-
-    function makeLetterboxInput(img, size, layout='nhwc'){
-      const srcCanvas = document.createElement('canvas');
-      srcCanvas.width = size; srcCanvas.height = size;
-      const sctx = srcCanvas.getContext('2d');
-      sctx.fillStyle = '#000'; sctx.fillRect(0,0,size,size);
-      const r = Math.min(size/img.width, size/img.height);
-      const nw = Math.round(img.width*r), nh = Math.round(img.height*r);
-      const dx = Math.floor((size - nw)/2), dy = Math.floor((size - nh)/2);
-      sctx.drawImage(img, dx, dy, nw, nh);
-
-      const iData = sctx.getImageData(0,0,size,size).data;
-      let tensor;
-      if(layout==='nchw'){
-        const arr = new Float32Array(size*size*3);
-        // NCHW: [1,3,H,W]
-        let R = 0, G = size*size, B = size*size*2;
-        for(let y=0;y<size;y++){
-          for(let x=0;x<size;x++){
-            const p = (y*size + x)*4;
-            const r=iData[p]/255, g=iData[p+1]/255, b=iData[p+2]/255;
-            arr[R++] = r; arr[G++] = g; arr[B++] = b;
-          }
-        }
-        tensor = new ort.Tensor('float32', arr, [1,3,size,size]);
-      }else{
-        const input = new Float32Array(size*size*3);
-        for(let i=0, j=0; i<iData.length; i+=4){
-          input[j++] = iData[i]/255;
-          input[j++] = iData[i+1]/255;
-          input[j++] = iData[i+2]/255;
-        }
-        tensor = new ort.Tensor('float32', input, [1,size,size,3]);
-      }
-      return {tensor, scale: r, dx, dy, w:nw, h:nh, srcCanvas};
-    }
-
-    function getFirstInputName(session){
-      try{ return session.inputNames?.[0]; }catch{ return null; }
-    }
-
-    // -------------------------- MobileSAM (best-effort) --------------------------
-    async function segWithMobileSAM(session, img, inputSize, seed){
-      try{
-        if(!seed) throw new Error('MobileSAM needs a point prompt');
-        const {normTensor, meta} = prepareSAMInput(img, inputSize);
-        const point = new Float32Array([seed.x/meta.W, seed.y/meta.H]); // normalized
-        const feeds = {};
-        const names = session.inputNames || [];
-        const imgName = names.find(n=>/image|input/i.test(n)) || 'input_image';
-        feeds[imgName] = normTensor;
-        const pn = names.find(n=>/point/i.test(n)) || 'point_coords';
-        feeds[pn] = new ort.Tensor('float32', point, [1,2]);
-
-        let outputs;
-        try{
-          outputs = await session.run(feeds);
-        }catch(_){
-          // try NCHW
-          const alt = prepareSAMInput(img, inputSize, 'nchw');
-          feeds[imgName] = alt.normTensor;
-          outputs = await session.run(feeds);
-        }
-
-        const out = pickFirstTensor(outputs);
-        const maskCanvas = tensorToMaskCanvas(out, meta.W, meta.H);
-        if(maskCanvas) return maskCanvas;
-        throw new Error('Unexpected MobileSAM output shape');
-      }catch(err){
-        log('MobileSAM path failed, using EdgeGrow fallback:', err?.message||err);
-        if(segReady && seed){
-          await requestSegMask('autoSmart', seed.x, seed.y, state.tol, state.aggr);
-          return null;
-        }else{
-          const m = magicWandMask(img, seed?.x ?? Math.round(img.width/2), seed?.y ?? Math.round(img.height/2), state.tol/100, state.aggr);
-          return m;
-        }
-      }
-    }
-
-    function prepareSAMInput(img, size, layout='nhwc'){
-      const c = document.createElement('canvas'); c.width=size; c.height=size;
-      const x = c.getContext('2d');
-      x.drawImage(img, 0,0,size,size);
-      const d = x.getImageData(0,0,size,size).data;
-
-      if(layout==='nchw'){
-        const arr = new Float32Array(size*size*3);
-        let R=0,G=size*size,B=size*size*2;
-        for(let i=0;i<d.length;i+=4){
-          const r = (d[i]/255 - 0.5)/0.5;
-          const g = (d[i+1]/255 - 0.5)/0.5;
-          const b = (d[i+2]/255 - 0.5)/0.5;
-          arr[R++] = r; arr[G++] = g; arr[B++] = b;
-        }
-        const t = new ort.Tensor('float32', arr, [1,3,size,size]);
-        return {normTensor:t, meta:{W:img.width, H:img.height}};
-      }else{
-        const arr = new Float32Array(size*size*3);
-        for(let i=0,j=0;i<d.length;i+=4){
-          arr[j++]= (d[i]/255 - 0.5)/0.5;
-          arr[j++]= (d[i+1]/255 - 0.5)/0.5;
-          arr[j++]= (d[i+2]/255 - 0.5)/0.5;
-        }
-        const t = new ort.Tensor('float32', arr, [1,size,size,3]);
-        return {normTensor:t, meta:{W:img.width, H:img.height}};
-      }
-    }
-    function pickFirstTensor(outputs){
-      const names = Object.keys(outputs);
-      return outputs[names[0]];
-    }
-    function tensorToMaskCanvas(tensor, outW, outH){
-      const data = tensor.data;
-      const dims = tensor.dims;
-      let H=0,W=0;
-      if(dims.length===4){ H=dims[2]||dims[1]; W=dims[3]||dims[2]; }
-      else if(dims.length===3){ H=dims[1]; W=dims[2]; }
-      else return null;
-      const c = document.createElement('canvas'); c.width=outW; c.height=outH;
-      const s = document.createElement('canvas'); s.width=W; s.height=H;
-      const sx = s.getContext('2d');
-      const id = sx.createImageData(W,H);
-      for(let i=0;i<W*H;i++){
-        const v = 1/(1+Math.exp(-data[i]));
-        const a = Math.round(255*clamp(v,0,1));
-        id.data[i*4+0]=255; id.data[i*4+1]=255; id.data[i*4+2]=255; id.data[i*4+3]=a;
+      const small = document.createElement('canvas');
+      small.width=mw; small.height=mh;
+      const sx = small.getContext('2d');
+      const id = sx.createImageData(mw,mh);
+      for(let i=0;i<mw*mh;i++){
+        const a = Math.round(255*clamp(flat[i],0,1));
+        const o = i*4;
+        id.data[o]=255; id.data[o+1]=255; id.data[o+2]=255; id.data[o+3]=a;
       }
       sx.putImageData(id,0,0);
-      const cx = c.getContext('2d');
-      cx.imageSmoothingEnabled = false;
-      cx.drawImage(s, 0,0, W,H, 0,0, outW,outH);
-      return c;
-    }
 
-    // -------------------------- DEPTH PREDICTION --------------------------
-    async function depthPredict(session, img, inputSize){
-      const {tensor, mapW, mapH} = prepareDepthInput(img, inputSize);
-      const inputName = getFirstInputName(session) || 'input';
-      let outputs;
-      try{
-        outputs = await session.run({[inputName]:tensor});
-      }catch(_){
-        // Try NCHW
-        const alt = prepareDepthInput(img, inputSize, 'nchw');
-        outputs = await session.run({[inputName]:alt.tensor});
-      }
-      const out = pickFirstTensor(outputs);
-      const dims = out.dims;
-      let H = dims[dims.length-2], W = dims[dims.length-1];
-      if(!H||!W){ H = mapH; W = mapW; }
+      const big = document.createElement('canvas');
+      big.width=outW; big.height=outH;
+      const bx = big.getContext('2d');
+      bx.drawImage(small, 0,0, inputSize,inputSize, -dx, -dy, inputSize/scale, inputSize/scale);
 
-      // Convert to normalized grayscale
-      const arr = out.data;
-      let mn=Infinity, mx=-Infinity;
-      for(let i=0;i<arr.length;i++){ const v=arr[i]; if(v<mn) mn=v; if(v>mx) mx=v; }
-      const range = mx-mn || 1;
-
-      const small = document.createElement('canvas'); small.width=W; small.height=H;
-      const sctx = small.getContext('2d');
-      const id = sctx.createImageData(W,H);
-      for(let i=0;i<W*H;i++){
-        const v = (arr[i]-mn)/range;
-        const g = Math.round(255*v);
-        id.data[i*4+0]=g; id.data[i*4+1]=g; id.data[i*4+2]=g; id.data[i*4+3]=255;
-      }
-      sctx.putImageData(id,0,0);
-
-      const big = document.createElement('canvas'); big.width=img.width; big.height=img.height;
-      const bctx = big.getContext('2d');
-      bctx.imageSmoothingEnabled = true;
-      bctx.drawImage(small, 0,0, W,H, 0,0, img.width, img.height);
-
-      // Also build a Float32 depth map at full-res
-      const map = new Float32Array(img.width*img.height);
-      const bd = bctx.getImageData(0,0,img.width,img.height).data;
-      for(let i=0,j=0;i<map.length;i++,j+=4) map[i] = bd[j]/255;
-
-      return {canvas: big, map};
-    }
-
-    function prepareDepthInput(img, size, layout='nhwc'){
-      const c = document.createElement('canvas'); c.width=size; c.height=size;
-      const x = c.getContext('2d');
-      const r = Math.min(size/img.width, size/img.height);
-      const nw = Math.round(img.width*r), nh = Math.round(img.height*r);
-      const dx = Math.floor((size - nw)/2), dy = Math.floor((size - nh)/2);
-      x.fillStyle = '#000'; x.fillRect(0,0,size,size);
-      x.drawImage(img, dx, dy, nw, nh);
-      const d = x.getImageData(0,0,size,size).data;
-
-      if(layout==='nchw'){
-        const arr = new Float32Array(size*size*3);
-        let R=0,G=size*size,B=size*size*2;
-        for(let i=0;i<d.length;i+=4){
-          arr[R++]= d[i]/255;
-          arr[G++]= d[i+1]/255;
-          arr[B++]= d[i+2]/255;
+      if(seed){
+        const hit = maskHit(big, seed.x, seed.y);
+        if(hit){ bestCanvas = big; break; }
+        else{
+          const cx = (det.x1+det.x2)/2, cy=(det.y1+det.y2)/2;
+          const dist = Math.hypot(seed.x - (cx - dx)/scale, seed.y - (cy - dy)/scale);
+          const sc = det.score / (1 + 0.002*dist);
+          if(sc>bestScore){ bestScore=sc; bestCanvas=big; }
         }
-        const t = new ort.Tensor('float32', arr, [1,3,size,size]);
-        return {tensor:t, mapW:size, mapH:size};
       }else{
-        const arr = new Float32Array(size*size*3);
-        for(let i=0,j=0;i<d.length;i+=4){
-          arr[j++]= d[i]/255;
-          arr[j++]= d[i+1]/255;
-          arr[j++]= d[i+2]/255;
+        if(det.score>bestScore){ bestScore=det.score; bestCanvas=big; }
+      }
+    }
+    return bestCanvas;
+  }
+
+  function maskHit(maskCanvas, x, y){
+    if(!maskCanvas) return false;
+    if(x<0||y<0||x>=maskCanvas.width||y>=maskCanvas.height) return false;
+    const ctx = maskCanvas.getContext('2d');
+    const d = ctx.getImageData(Math.floor(x),Math.floor(y),1,1).data;
+    return d[3] > 10;
+  }
+
+  // Fallback (Auto Wand / EdgeGrow lite)
+  function edgeGrowMask(img, sx, sy){
+    const w = img.width, h = img.height;
+    const maxSide = 1024;
+    const scale = Math.min(1, maxSide / Math.max(w,h));
+    const sw = Math.max(1, Math.round(w*scale));
+    const sh = Math.max(1, Math.round(h*scale));
+
+    const sC = document.createElement('canvas'); sC.width = sw; sC.height = sh;
+    const sX = sC.getContext('2d'); sX.imageSmoothingEnabled = true; sX.drawImage(img, 0,0, sw,sh);
+
+    const sx2 = Math.round(clamp(sx*scale,0,sw-1));
+    const sy2 = Math.round(clamp(sy*scale,0,sh-1));
+
+    const src = sX.getImageData(0,0,sw,sh);
+    const data = src.data;
+
+    const idx = (x,y)=> (y*sw + x);
+    const pIdx = (x,y)=> idx(x,y)*4;
+
+    const r0 = data[pIdx(sx2,sy2)], g0 = data[pIdx(sx2,sy2)+1], b0 = data[pIdx(sx2,sy2)+2];
+    const tol = 28; // conservative
+    const mask = new Uint8Array(sw*sh);
+
+    const st = [[sx2,sy2]];
+    mask[idx(sx2,sy2)] = 1;
+    while(st.length){
+      const [x,y] = st.pop();
+      for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
+        if(nx<0||ny<0||nx>=sw||ny>=sh) continue;
+        const id = idx(nx,ny);
+        if(mask[id]) continue;
+        const p = pIdx(nx,ny);
+        const dr=data[p]-r0, dg=data[p+1]-g0, db=data[p+2]-b0;
+        const dist = Math.sqrt(dr*dr+dg*dg+db*db);
+        if(dist<=tol){ mask[id]=1; st.push([nx,ny]); }
+      }
+    }
+
+    const mSmall = document.createElement('canvas'); mSmall.width=sw; mSmall.height=sh;
+    const msx = mSmall.getContext('2d');
+    const id2 = msx.createImageData(sw,sh);
+    for(let i=0;i<sw*sh;i++){
+      const a = mask[i]?255:0; const o = i*4;
+      id2.data[o]=255; id2.data[o+1]=255; id2.data[o+2]=255; id2.data[o+3]=a;
+    }
+    msx.putImageData(id2,0,0);
+
+    const mFull = document.createElement('canvas'); mFull.width=w; mFull.height=h;
+    const fx = mFull.getContext('2d'); fx.imageSmoothingEnabled = false; fx.drawImage(mSmall, 0,0, sw,sh, 0,0, w,h);
+    return mFull;
+  }
+
+  // ---------------- Depth ----------------
+  async function runDepth(session, key, img){
+    const info = state.models[key] || BUILTIN_MODELS[key] || {inputSize:256, flavor:'midas'};
+    const size = info.inputSize || 256;
+    const c = document.createElement('canvas'); c.width=size; c.height=size;
+    const x = c.getContext('2d');
+    const r = Math.min(size/img.width, size/img.height);
+    const nw = Math.round(img.width*r), nh = Math.round(img.height*r);
+    const dx = Math.floor((size-nw)/2), dy = Math.floor((size-nh)/2);
+    x.fillStyle='#000'; x.fillRect(0,0,size,size); x.drawImage(img, dx,dy,nw,nh);
+    const d = x.getImageData(0,0,size,size).data;
+    const arr = new Float32Array(size*size*3);
+    for(let i=0,j=0;i<d.length;i+=4){ arr[j++]=d[i]/255; arr[j++]=d[i+1]/255; arr[j++]=d[i+2]/255; }
+    const inputName = session.inputNames?.[0] || 'input';
+    const tensor = new ort.Tensor('float32', arr, [1,size,size,3]);
+    const out = await session.run({[inputName]: tensor});
+    const first = out[Object.keys(out)[0]];
+    // Dims may be (1,1,H,W) or (1,H,W,1) or (1,H,W)
+    const dims = first.dims;
+    let H, W, raw = first.data;
+    if(dims.length===4){ H = dims[2]; W = dims[3]; }
+    else if(dims.length===3){ H = dims[1]; W = dims[2]; }
+    else { throw new Error('Unexpected depth output shape'); }
+
+    let mn=Infinity, mx=-Infinity;
+    for(let i=0;i<raw.length;i++){ const v = raw[i]; if(v<mn) mn=v; if(v>mx) mx=v; }
+    const range = mx-mn || 1;
+
+    const small = document.createElement('canvas'); small.width=W; small.height=H;
+    const sx = small.getContext('2d');
+    const id = sx.createImageData(W,H);
+    for(let i=0;i<W*H;i++){
+      const v = (raw[i]-mn)/range; const g = Math.round(255*v);
+      id.data[i*4]=g; id.data[i*4+1]=g; id.data[i*4+2]=g; id.data[i*4+3]=255;
+    }
+    sx.putImageData(id,0,0);
+
+    const big = document.createElement('canvas'); big.width = img.width; big.height = img.height;
+    const bx = big.getContext('2d');
+    bx.imageSmoothingEnabled = true; bx.drawImage(small, 0,0, W,H, 0,0, img.width, img.height);
+
+    const map = new Float32Array(img.width*img.height);
+    const bd = bx.getImageData(0,0,img.width,img.height).data;
+    for(let i=0,j=0;i<map.length;i++,j+=4) map[i] = bd[j]/255;
+
+    return {canvas:big, map};
+  }
+
+  function makeDepthBandMask(depthMap, W,H, seed, band){
+    if(!seed) return null;
+    const sd = depthMap[seed.y*W + seed.x];
+    const lo = Math.max(0, sd - band), hi = Math.min(1, sd + band);
+    const c = document.createElement('canvas'); c.width=W; c.height=H;
+    const cx = c.getContext('2d'); const id = cx.createImageData(W,H);
+    for(let i=0;i<W*H;i++){
+      const ok = (depthMap[i]>=lo && depthMap[i]<=hi) ? 255 : 0;
+      const o=i*4; id.data[o]=255; id.data[o+1]=255; id.data[o+2]=255; id.data[o+3]=ok;
+    }
+    cx.putImageData(id,0,0);
+    return c;
+  }
+  function makeDepthThresholdMask(depthMap, W,H, thr, nearIsForeground=true){
+    const c = document.createElement('canvas'); c.width=W; c.height=H;
+    const cx = c.getContext('2d'); const id = cx.createImageData(W,H);
+    for(let i=0;i<W*H;i++){
+      const v = depthMap[i]; const ok = (nearIsForeground ? (v<=thr) : (v>=thr)) ? 255 : 0;
+      const o=i*4; id.data[o]=255; id.data[o+1]=255; id.data[o+2]=255; id.data[o+3]=ok;
+    }
+    cx.putImageData(id,0,0);
+    return c;
+  }
+
+  // ---------------- Edges (Sobel + Laplacian) ----------------
+  function makeEdgesMask(img, alpha=0.7, beta=0.3, thr=0.18){
+    const W = img.width, H = img.height;
+    const maxSide = 1024;
+    const scale = Math.min(1, maxSide / Math.max(W,H));
+    const sw = Math.max(1, Math.round(W*scale)), sh = Math.max(1, Math.round(H*scale));
+
+    // downsample grayscale
+    const sC = document.createElement('canvas'); sC.width=sw; sC.height=sh;
+    const sx = sC.getContext('2d');
+    sx.drawImage(img, 0,0, sw,sh);
+    const src = sx.getImageData(0,0,sw,sh); const sd = src.data;
+    const gray = new Float32Array(sw*sh);
+    for(let i=0,j=0;i<gray.length;i++,j+=4){
+      gray[i] = (0.2126*sd[j] + 0.7152*sd[j+1] + 0.0722*sd[j+2])/255;
+    }
+
+    // Sobel
+    const sob = new Float32Array(sw*sh);
+    const gxK = [-1,0,1, -2,0,2, -1,0,1];
+    const gyK = [-1,-2,-1, 0,0,0, 1,2,1];
+    for(let y=1;y<sh-1;y++){
+      for(let x=1;x<sw-1;x++){
+        let gx=0, gy=0, p=0;
+        for(let ky=-1;ky<=1;ky++){
+          for(let kx=-1;kx<=1;kx++){
+            const v = gray[(y+ky)*sw + (x+kx)];
+            const i = (++p)-1;
+            gx += v * gxK[i]; gy += v * gyK[i];
+          }
         }
-        const t = new ort.Tensor('float32', arr, [1,size,size,3]);
-        return {tensor:t, mapW:size, mapH:size};
+        sob[y*sw+x] = Math.hypot(gx,gy)/4.0; // normalize a bit
       }
     }
 
-    // -------------------------- FANCY REFINE (Depth + EdgeGrow) --------------------------
-    function refineWithDepthAndEdges(maskCanvas, depthMap, W, H, seed){
-      // 1) Depth region around the seed
-      const band = 0.07;
-      const sd = depthMap[seed.y*W + seed.x];
-      const lo = Math.max(0, sd - band), hi = Math.min(1, sd + band);
-
-      const depthMask = document.createElement('canvas'); depthMask.width=W; depthMask.height=H;
-      const dx = depthMask.getContext('2d');
-      const id = dx.createImageData(W,H);
-      for(let i=0;i<W*H;i++){
-        const v = depthMap[i];
-        const ok = (v>=lo && v<=hi) ? 255 : 0;
-        id.data[i*4+0]=255; id.data[i*4+1]=255; id.data[i*4+2]=255; id.data[i*4+3]=ok;
+    // Laplacian
+    const lap = new Float32Array(sw*sh);
+    const lK = [0,1,0, 1,-4,1, 0,1,0];
+    for(let y=1;y<sh-1;y++){
+      for(let x=1;x<sw-1;x++){
+        let s=0, p=0;
+        for(let ky=-1;ky<=1;ky++){
+          for(let kx=-1;kx<=1;kx++){
+            const v = gray[(y+ky)*sw + (x+kx)];
+            const i=(++p)-1; s += v * lK[i];
+          }
+        }
+        lap[y*sw+x] = Math.abs(s);
       }
-      dx.putImageData(id,0,0);
-
-      // 2) Combine with existing mask (intersection to tighten)
-      const combined = document.createElement('canvas'); combined.width=W; combined.height=H;
-      const cx = combined.getContext('2d');
-      cx.drawImage(maskCanvas,0,0);
-      cx.globalCompositeOperation = 'destination-in';
-      cx.drawImage(depthMask,0,0);
-      cx.globalCompositeOperation = 'source-over';
-
-      // 3) Slight blur to soften edges
-      const soft = blurMask(combined, 2);
-      const refined = document.createElement('canvas'); refined.width=W; refined.height=H;
-      const rx = refined.getContext('2d');
-      rx.drawImage(soft,0,0);
-      return refined;
     }
 
-    function blurMask(maskCanvas, r){
-      const W = maskCanvas.width, H = maskCanvas.height;
-      const out = document.createElement('canvas'); out.width=W; out.height=H;
-      const x = out.getContext('2d');
-      x.filter = `blur(${r}px)`; x.drawImage(maskCanvas,0,0); x.filter='none';
-      return out;
+    // Combine
+    let mn=Infinity, mx=-Infinity;
+    for(let i=0;i<gray.length;i++){
+      const v = alpha*sob[i] + beta*lap[i];
+      if(v<mn) mn=v; if(v>mx) mx=v;
     }
+    const rng = mx-mn || 1;
 
-    // -------------------------- AI HELPERS --------------------------
-    function setStatus(text){ dom.aiStatus.textContent = text; }
+    // Threshold → mask
+    const smallMask = document.createElement('canvas'); smallMask.width=sw; smallMask.height=sh;
+    const msx = smallMask.getContext('2d'); const id2 = msx.createImageData(sw,sh);
+    for(let i=0;i<gray.length;i++){
+      const v = (alpha*sob[i] + beta*lap[i] - mn)/rng;
+      const a = v>=thr ? 255 : 0;
+      const o=i*4; id2.data[o]=255; id2.data[o+1]=255; id2.data[o+2]=255; id2.data[o+3]=a;
+    }
+    msx.putImageData(id2,0,0);
 
-    // -------------------------- INIT --------------------------
-    function attachMonocle(){ /* replaced by dual monocles */ }
+    // Upscale
+    const mFull = document.createElement('canvas'); mFull.width=W; mFull.height=H;
+    const fx = mFull.getContext('2d'); fx.imageSmoothingEnabled = false;
+    fx.drawImage(smallMask, 0,0, sw,sh, 0,0, W,H);
+    return mFull;
+  }
 
+  // ---------------- IDB (model cache) ----------------
+  let idbDb = null;
+  function idbOpen(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open('cspx-models', 1);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if(!db.objectStoreNames.contains('onnx')) db.createObjectStore('onnx');
+      };
+      req.onsuccess = ()=>{ idbDb = req.result; resolve(); };
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  async function idbSet(key, buffer){
+    if(!idbDb) await idbOpen();
+    return new Promise((resolve,reject)=>{
+      const tx = idbDb.transaction('onnx','readwrite');
+      tx.objectStore('onnx').put(buffer, key);
+      tx.oncomplete = resolve;
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  async function idbGet(key){
+    if(!idbDb) await idbOpen();
+    return new Promise((resolve,reject)=>{
+      const tx = idbDb.transaction('onnx','readonly');
+      const req = tx.objectStore('onnx').get(key);
+      req.onsuccess = ()=> resolve(req.result||null);
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  async function idbClear(){
+    if(!idbDb) await idbOpen();
+    return new Promise((resolve,reject)=>{
+      const tx = idbDb.transaction('onnx','readwrite');
+      const req = tx.objectStore('onnx').clear();
+      req.onsuccess = ()=> resolve();
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  // ---------------- Logs UI ----------------
+  dom.logFab.addEventListener('click', ()=> dom.logsPanel.classList.toggle('visible'));
+  dom.clearBtn.addEventListener('click', ()=>{ dom.logsBody.innerHTML=''; });
+  dom.clearCacheBtn.addEventListener('click', async ()=>{
+    try{
+      await idbClear();
+      state.sessions = {}; state.cachedBuffers = {};
+      log('Cleared cached ONNX models from IndexedDB.');
+    }catch(err){ log('Failed clearing cache:', err?.message||err); }
+  });
+  dom.selfTestBtn.addEventListener('click', async ()=>{
+    const keys = Object.keys(BUILTIN_MODELS).filter(k=>BUILTIN_MODELS[k].url);
+    for(const k of keys){
+      const url = BUILTIN_MODELS[k].url;
+      try{
+        const res = await fetch(url, {method:'HEAD', mode:'cors', redirect:'follow'});
+        log(`[HEAD] ${k} → ${res.status} ${res.ok?'OK':''} ${url}`);
+      }catch(err){ log(`[HEAD] ${k} FAILED:`, err?.message||err); }
+      await sleep(100);
+    }
+  });
+
+  // ---------------- Use / Effect parameter changes → re-render ----------------
+  [dom.bandRange, dom.depthThrRange, dom.edgeThrRange, dom.featherPx].forEach(el=>{
+    el.addEventListener('input', ()=>{ if(state.image) { pv.layout(); pv.render(); }});
+  });
+
+  // ---------------- INIT ----------------
+  (async function init(){
+    log(`App ready. Version ${APP_VERSION}`);
+    const providers = await pickProviders();
+    log('Runtime:', providers.includes('webgpu') ? 'WebGPU + WASM fallback' : 'WASM only');
+    ed.updateSize(); ed.draw(); pv.layout(); pv.render();
   })();
-  </script>
+
+})();
+</script>
 </body>
 </html>
