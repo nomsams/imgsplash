@@ -3,1135 +3,406 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Color Splash Pro X — Grounded Stable Build</title>
-
-<!-- onnxruntime-web -->
+<title>Color Splash Pro X — Stable NCHW Build</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-
 <style>
-  :root{
-    --bg:#eef2f7; --panel:#fff; --ink:#0f172a; --muted:#475569; --border:#e5e7eb;
-    --p:#2563eb; --p2:#1e40af; --ok:#16a34a; --warn:#f59e0b; --err:#dc2626;
-  }
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0; font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--ink); background:var(--bg); display:flex; flex-direction:column; overflow:hidden}
-
-  header{display:flex; align-items:center; gap:.6rem; padding:.55rem .75rem; background:var(--panel);
-    border-bottom:1px solid var(--border); box-shadow:0 1px 8px rgba(0,0,0,.06); z-index:5}
-  .brand{font-weight:800; color:var(--p)}
-  .toolbar{display:flex; gap:.4rem; align-items:center; flex-wrap:wrap}
-  button, select, input[type="number"], input[type="text"]{
-    background:#fff; border:1px solid var(--border); border-radius:8px; padding:.38rem .58rem; font-weight:600;
-  }
-  button{cursor:pointer}
-  button.primary{background:var(--p); color:#fff; border-color:var(--p)}
-  button.primary:hover{background:var(--p2)}
-  .chip{background:#f1f5f9; border:1px solid var(--border); color:#1f2937; font-size:.8rem; padding:.18rem .5rem; border-radius:999px}
-  .kv{font-size:.75rem; color:#334155; background:#f8fafc; border:1px dashed #d1e3ff; padding:.1rem .35rem; border-radius:6px}
-
-  .root{flex:1; min-height:0; padding:10px}
-  .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; height:calc(100% - 0px); min-height:0}
-
-  .panel{display:flex; flex-direction:column; min-height:0; background:var(--panel); border:1px solid var(--border); border-radius:12px;
-    box-shadow:0 2px 10px rgba(0,0,0,.06)}
-  .ph{padding:.5rem .75rem; border-bottom:1px solid var(--border); font-weight:700; color:#334155; display:flex; align-items:center; justify-content:space-between}
-  .pc{position:relative; flex:1; min-height:0; overflow:hidden; background:#e9eef6}
-  .wrap{position:absolute; inset:0; display:flex; align-items:center; justify-content:center}
-  canvas{background:#fff; border:1px solid #0000000a}
-
-  .hint{position:absolute; pointer-events:none; color:#334155; background:#fff; border:1px solid var(--border); border-radius:999px; padding:.25rem .65rem}
-
-  /* Thumbs area under preview */
-  .thumbs{border-top:1px solid var(--border); background:#fff; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:8px}
-  .thumb{display:flex; flex-direction:column; align-items:center; gap:4px}
-  .thumb canvas{width:100%; max-width:220px; height:auto; border:1px solid var(--border); border-radius:8px; background:#fff}
-  .cap{font-size:.78rem; color:#475569}
-
-  /* Floating thumbs on hover over them — move to top-right/left inside preview */
-  .thumbs.float{position:absolute; z-index:4; top:8px; left:auto; right:8px; width:420px;
-    grid-template-columns:1fr; background:#ffffffef; border:1px solid var(--border); border-radius:10px; padding:8px; box-shadow:0 10px 28px rgba(0,0,0,.25)}
-  .thumbs.float.left{left:8px; right:auto}
-
-  /* Logs */
-  #logBtn{position:fixed; right:12px; bottom:12px; z-index:9; background:var(--p); color:#fff; border:none; border-radius:999px; padding:.6rem .85rem; font-weight:800; box-shadow:0 10px 26px rgba(0,0,0,.25)}
-  #logs{position:fixed; right:12px; bottom:64px; width:560px; height:66vh; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 16px 38px rgba(0,0,0,.28); display:none; grid-template-rows:auto auto 1fr auto; z-index:10}
-  #logs.visible{display:grid}
-  #logs h3{margin:.6rem .75rem}
-  #logs .help{margin:0 .75rem .6rem; color:#334155; font-size:.86rem; background:#fafbff; border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:.5rem}
-  #logs pre{margin:0; padding:.5rem .6rem; font-family:ui-monospace,Consolas,Menlo,monospace; font-size:.83rem; overflow:auto}
-  #logs .foot{border-top:1px solid var(--border); display:grid; grid-template-columns:1fr 1fr 1fr; gap:.4rem; padding:.5rem .6rem}
-
-  /* Progress + status */
-  .progress{position:absolute; left:12px; right:12px; bottom:12px; height:8px; border-radius:6px; background:#eef2ff; border:1px solid #dde6ff; overflow:hidden; box-shadow:inset 0 1px 0 rgba(0,0,0,.03); display:none}
-  .barp{height:100%; width:0%; background:linear-gradient(90deg,#7aa2ff,#2563eb)}
-  .status{position:absolute; left:12px; bottom:28px; background:#111827; color:#fff; padding:.18rem .4rem; border-radius:6px; font-size:.72rem; opacity:.9}
-  .hidden{display:none!important}
-  .ver{position:fixed; top:8px; right:8px; background:#111827; color:#fff; font-size:.72rem; padding:.22rem .45rem; border-radius:6px; opacity:.9; z-index:20}
+  :root{--bg:#eef2f7;--panel:#fff;--ink:#0f172a;--border:#e5e7eb;--p:#2563eb;--p2:#1e40af}
+  *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:0 1px 8px rgba(0,0,0,.06);z-index:5}
+  .brand{font-weight:800;color:var(--p)} .toolbar{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+  button,select,input[type="number"],input[type="text"]{background:#fff;border:1px solid var(--border);border-radius:8px;padding:.38rem .58rem;font-weight:600}
+  button{cursor:pointer}button.primary{background:var(--p);color:#fff;border-color:var(--p)}button.primary:hover{background:var(--p2)}
+  .chip{background:#f1f5f9;border:1px solid var(--border);font-size:.8rem;padding:.18rem .5rem;border-radius:999px}
+  .kv{font-size:.75rem;color:#334155;background:#f8fafc;border:1px dashed #d1e3ff;padding:.1rem .35rem;border-radius:6px}
+  .root{flex:1;min-height:0;padding:10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;height:100%;min-height:0}
+  .panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+  .ph{padding:.5rem .75rem;border-bottom:1px solid var(--border);font-weight:700;color:#334155;display:flex;align-items:center;justify-content:space-between}
+  .pc{position:relative;flex:1;min-height:0;overflow:hidden;background:#e9eef6}
+  .wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{background:#fff;border:1px solid #0000000a}
+  .hint{position:absolute;pointer-events:none;color:#334155;background:#fff;border:1px solid var(--border);border-radius:999px;padding:.25rem .65rem}
+  .thumbs{border-top:1px solid var(--border);background:#fff;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px}
+  .thumb{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .thumb canvas{width:100%;max-width:220px;height:auto;border:1px solid var(--border);border-radius:8px;background:#fff}
+  .cap{font-size:.78rem;color:#475569}
+  .thumbs.float{position:absolute;z-index:4;top:8px;right:8px;width:420px;grid-template-columns:1fr;background:#ffffffef;border:1px solid var(--border);border-radius:10px;padding:8px;box-shadow:0 10px 28px rgba(0,0,0,.25)}
+  .thumbs.float.left{left:8px;right:auto}
+  #logBtn{position:fixed;right:12px;bottom:12px;z-index:9;background:var(--p);color:#fff;border:none;border-radius:999px;padding:.6rem .85rem;font-weight:800;box-shadow:0 10px 26px rgba(0,0,0,.25)}
+  #logs{position:fixed;right:12px;bottom:64px;width:560px;height:66vh;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 38px rgba(0,0,0,.28);display:none;grid-template-rows:auto auto 1fr auto;z-index:10}
+  #logs.visible{display:grid}#logs h3{margin:.6rem .75rem}
+  #logs .help{margin:0 .75rem .6rem;color:#334155;font-size:.86rem;background:#fafbff;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.5rem}
+  #logs pre{margin:0;padding:.5rem .6rem;font-family:ui-monospace,Consolas,Menlo,monospace;font-size:.83rem;overflow:auto}
+  #logs .foot{border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;padding:.5rem .6rem}
+  .progress{position:absolute;left:12px;right:12px;bottom:12px;height:8px;border-radius:6px;background:#eef2ff;border:1px solid #dde6ff;overflow:hidden;box-shadow:inset 0 1px 0 rgba(0,0,0,.03);display:none}
+  .barp{height:100%;width:0%;background:linear-gradient(90deg,#7aa2ff,#2563eb)}.status{position:absolute;left:12px;bottom:28px;background:#111827;color:#fff;padding:.18rem .4rem;border-radius:6px;font-size:.72rem;opacity:.9}.hidden{display:none!important}
+  .ver{position:fixed;top:8px;right:8px;background:#111827;color:#fff;font-size:.72rem;padding:.22rem .45rem;border-radius:6px;opacity:.9;z-index:20}
 </style>
 </head>
 <body>
-  <div class="ver">v4.0.0</div>
+<div class="ver">v4.1.0</div>
 
-  <header>
-    <div class="brand">Color Splash Pro X</div>
-    <div class="toolbar">
-      <button id="btnImage" class="primary">📤 Image</button>
-      <button id="btnReset">🧹 Reset</button>
-      <button id="btnSave">⬇️ Download</button>
-      <span class="chip" id="aiBadge">🤖 AI: ON</span>
-    </div>
-
-    <div style="flex:1"></div>
-
-    <!-- Compact AI controls -->
-    <div class="toolbar" id="aiBar">
-      <span class="chip">AI Controls</span>
-      <label>Seg:</label>
-      <select id="selSeg"></select>
-      <label>Depth:</label>
-      <select id="selDepth"></select>
-      <label>Effect:</label>
-      <select id="selEffect">
-        <option value="seg">Segmentation only</option>
-        <option value="depth-band">Depth: seed band</option>
-        <option value="depth-thresh">Depth: global threshold</option>
-        <option value="edges">Edges: Sobel+Laplacian</option>
-        <option value="seg-and-depth">Seg ∩ Depth</option>
-        <option value="seg-and-edges">Seg ∩ Edges</option>
-        <option value="seg-and-depth-and-edges">Seg ∩ Depth ∩ Edges</option>
-        <option value="edge-bound-grow">Depth+Edge-Bound Grow (seed)</option>
-      </select>
-      <span class="kv">Band</span>
-      <input id="rngBand" type="range" min="0.01" max="0.25" step="0.005" value="0.07"/>
-      <span class="kv">Depth T</span>
-      <input id="rngDepthT" type="range" min="0" max="1" step="0.01" value="0.5"/>
-      <span class="kv">Edge T</span>
-      <input id="rngEdgeT" type="range" min="0.02" max="0.6" step="0.01" value="0.18"/>
-      <span class="kv">Feather(px)</span>
-      <input id="numFeather" type="number" min="0" max="12" step="1" value="2" style="width:68px"/>
-      <button id="btnRun" class="primary">🚀 Use</button>
-      <span id="aiStatus" class="chip">ready</span>
-    </div>
-  </header>
-
-  <div class="root">
-    <div class="grid">
-      <!-- ORIGINAL -->
-      <section class="panel" id="leftPanel">
-        <div class="ph">ORIGINAL — Editor (click seed · Drag-Drop image · Wheel zoom)</div>
-        <div class="pc" id="edBox">
-          <div class="wrap">
-            <canvas id="edCanvas"></canvas>
-            <div class="hint" id="edHint">Drop/upload an image</div>
-          </div>
-          <div class="progress" id="dlProg"><div class="barp" id="dlBar"></div></div>
-          <div class="status hidden" id="dlStatus"></div>
-        </div>
-      </section>
-
-      <!-- PREVIEW -->
-      <section class="panel" id="rightPanel">
-        <div class="ph">PREVIEW — Color Splash</div>
-        <div class="pc" id="pvBox">
-          <div class="wrap">
-            <canvas id="pvCanvas"></canvas>
-          </div>
-          <!-- floating thumbs will be positioned within pvBox when hovered -->
-        </div>
-        <div class="thumbs" id="thumbs">
-          <div class="thumb">
-            <canvas id="thSeg"></canvas>
-            <div class="cap">Segmentation Mask</div>
-          </div>
-          <div class="thumb">
-            <canvas id="thDepth"></canvas>
-            <div class="cap">Depth Map</div>
-          </div>
-          <div class="thumb">
-            <canvas id="thFinal"></canvas>
-            <div class="cap">Final Mask</div>
-          </div>
-        </div>
-      </section>
-    </div>
+<header>
+  <div class="brand">Color Splash Pro X</div>
+  <div class="toolbar">
+    <button id="btnImage" class="primary">📤 Image</button>
+    <button id="btnReset">🧹 Reset</button>
+    <button id="btnSave">⬇️ Download</button>
+    <span class="chip" id="aiBadge">🤖 AI: ON</span>
   </div>
-
-  <button id="logBtn">💬 Logs</button>
-  <div id="logs" aria-modal="true">
-    <h3>AI Logs & Model Manager</h3>
-    <div class="help">
-      GitHub Releases are tried first (3 attempts). If those fail, Dropbox DIRECT is used.  
-      Models are cached in IndexedDB (no re-download).  
-      You can self-test links below.
-    </div>
-    <pre id="log"></pre>
-    <div class="foot">
-      <button id="btnClearLog">Clear Logs</button>
-      <button id="btnClearCache">Clear Cache</button>
-      <button id="btnSelfTest">Self-Test Links</button>
-    </div>
+  <div style="flex:1"></div>
+  <div class="toolbar" id="aiBar">
+    <span class="chip">AI Controls</span>
+    <label>Seg:</label>
+    <select id="selSeg"></select>
+    <label>Depth:</label>
+    <select id="selDepth"></select>
+    <label>Effect:</label>
+    <select id="selEffect">
+      <option value="seg">Segmentation only</option>
+      <option value="depth-band">Depth: seed band</option>
+      <option value="depth-thresh">Depth: global threshold</option>
+      <option value="edges">Edges: Sobel+Laplacian</option>
+      <option value="seg-and-depth">Seg ∩ Depth</option>
+      <option value="seg-and-edges">Seg ∩ Edges</option>
+      <option value="seg-and-depth-and-edges">Seg ∩ Depth ∩ Edges</option>
+      <option value="edge-bound-grow">Depth+Edge-Bound Grow (seed)</option>
+    </select>
+    <span class="kv">Band</span><input id="rngBand" type="range" min="0.01" max="0.25" step="0.005" value="0.07"/>
+    <span class="kv">Depth T</span><input id="rngDepthT" type="range" min="0" max="1" step="0.01" value="0.5"/>
+    <span class="kv">Edge T</span><input id="rngEdgeT" type="range" min="0.02" max="0.6" step="0.01" value="0.18"/>
+    <span class="kv">Feather(px)</span><input id="numFeather" type="number" min="0" max="12" step="1" value="2" style="width:68px"/>
+    <button id="btnRun" class="primary">🚀 Use</button>
+    <span id="aiStatus" class="chip">ready</span>
   </div>
+</header>
 
-  <input id="fileImage" type="file" accept="image/*" hidden/>
+<div class="root">
+  <div class="grid">
+    <section class="panel" id="leftPanel">
+      <div class="ph">ORIGINAL — Editor (click seed · Drag-Drop image · Wheel zoom)</div>
+      <div class="pc" id="edBox">
+        <div class="wrap">
+          <canvas id="edCanvas"></canvas>
+          <div class="hint" id="edHint">Drop/upload an image</div>
+        </div>
+        <div class="progress" id="dlProg"><div class="barp" id="dlBar"></div></div>
+        <div class="status hidden" id="dlStatus"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="rightPanel">
+      <div class="ph">PREVIEW — Color Splash</div>
+      <div class="pc" id="pvBox">
+        <div class="wrap"><canvas id="pvCanvas"></canvas></div>
+      </div>
+      <div class="thumbs" id="thumbs">
+        <div class="thumb"><canvas id="thSeg"></canvas><div class="cap">Segmentation Mask</div></div>
+        <div class="thumb"><canvas id="thDepth"></canvas><div class="cap">Depth Map</div></div>
+        <div class="thumb"><canvas id="thFinal"></canvas><div class="cap">Final Mask</div></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<button id="logBtn">💬 Logs</button>
+<div id="logs" aria-modal="true">
+  <h3>AI Logs & Model Manager</h3>
+  <div class="help">
+    GitHub Releases are tried first (3x). If those fail, Dropbox DIRECT is used.  
+    Models are cached in IndexedDB (no re-download). Use Self-Test to HEAD check URLs.
+  </div>
+  <pre id="log"></pre>
+  <div class="foot">
+    <button id="btnClearLog">Clear Logs</button>
+    <button id="btnClearCache">Clear Cache</button>
+    <button id="btnSelfTest">Self-Test Links</button>
+  </div>
+</div>
+
+<input id="fileImage" type="file" accept="image/*" hidden/>
 
 <script>
-(() => {
-  'use strict';
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const dom={btnImage:$('btnImage'),btnReset:$('btnReset'),btnSave:$('btnSave'),aiBadge:$('aiBadge'),
+selSeg:$('selSeg'),selDepth:$('selDepth'),selEffect:$('selEffect'),rngBand:$('rngBand'),rngDepthT:$('rngDepthT'),
+rngEdgeT:$('rngEdgeT'),numFeather:$('numFeather'),btnRun:$('btnRun'),aiStatus:$('aiStatus'),
+edBox:$('edBox'),edCanvas:$('edCanvas'),edHint:$('edHint'),pvBox:$('pvBox'),pvCanvas:$('pvCanvas'),
+thumbs:$('thumbs'),thSeg:$('thSeg'),thDepth:$('thDepth'),thFinal:$('thFinal'),
+logBtn:$('logBtn'),logs:$('logs'),log:$('log'),btnClearLog:$('btnClearLog'),btnClearCache:$('btnClearCache'),btnSelfTest:$('btnSelfTest'),
+fileImage:$('fileImage'),dlProg:$('dlProg'),dlBar:$('dlBar'),dlStatus:$('dlStatus')};
 
-  // ===== DOM helpers =====
-  const $ = (id) => document.getElementById(id);
-  const dom = {
-    btnImage: $('btnImage'),
-    btnReset: $('btnReset'),
-    btnSave: $('btnSave'),
-    aiBadge: $('aiBadge'),
+const S={aiOn:true,img:null,seed:null,ed:{x:0,y:0,s:1},segKey:'db-yolov8n-seg',depthKey:'db-da-v2-small',effect:'seg',
+sessions:Object.create(null),cache:Object.create(null),maskCanvas:null,depthCanvas:null,depthMap:null};
 
-    selSeg: $('selSeg'),
-    selDepth: $('selDepth'),
-    selEffect: $('selEffect'),
-    rngBand: $('rngBand'),
-    rngDepthT: $('rngDepthT'),
-    rngEdgeT: $('rngEdgeT'),
-    numFeather: $('numFeather'),
-    btnRun: $('btnRun'),
-    aiStatus: $('aiStatus'),
+const MODELS={
+  // Segmentation (all NCHW, size 640)
+  'edgegrow':{type:'seg',label:'No model (EdgeGrow)',layout:'NCHW',input:640},
+  'gh-yolov8n-seg':{type:'seg',label:'YOLOv8n-seg (GitHub)',layout:'NCHW',input:640,
+    gh:'https://github.com/nomsams/imgsplash/releases/download/models/yolov8n-seg.onnx',
+    db:'https://dl.dropboxusercontent.com/scl/fi/g3hh1rpbn4es4pqbgypj8/yolov8n-seg.onnx?rlkey=0etbjr7tb8jsrctn2l3wv2amy&dl=1'},
+  'db-yolov8n-seg':{type:'seg',label:'YOLOv8n-seg (Dropbox)',layout:'NCHW',input:640,
+    db:'https://dl.dropboxusercontent.com/scl/fi/g3hh1rpbn4es4pqbgypj8/yolov8n-seg.onnx?rlkey=0etbjr7tb8jsrctn2l3wv2amy&dl=1'},
+  'gh-fastsam-s':{type:'seg',label:'FastSAM-s (GitHub)',layout:'NCHW',input:640,
+    gh:'https://github.com/nomsams/imgsplash/releases/download/models/FastSAM-s.onnx'},
+  'gh-fastsam-x':{type:'seg',label:'FastSAM-X (GitHub)',layout:'NCHW',input:640,
+    gh:'https://github.com/nomsams/imgsplash/releases/download/models/FastSam-X.onnx',
+    db:'https://dl.dropboxusercontent.com/scl/fi/hpwyjvgc9yl0mbf2ty9dr/FastSam-X.onnx?rlkey=i9kfkcucagp5tb4qm0m1fgwm5&dl=1'},
+  'db-fastsam-x':{type:'seg',label:'FastSAM-X (Dropbox)',layout:'NCHW',input:640,
+    db:'https://dl.dropboxusercontent.com/scl/fi/hpwyjvgc9yl0mbf2ty9dr/FastSam-X.onnx?rlkey=i9kfkcucagp5tb4qm0m1fgwm5&dl=1'},
 
-    edBox: $('edBox'),
-    edCanvas: $('edCanvas'),
-    edHint: $('edHint'),
+  // Depth (NCHW)
+  'none':{type:'depth',label:'None',layout:'NCHW',input:256},
+  'gh-midas-small':{type:'depth',label:'MiDaS v2.1 Small (GitHub)',layout:'NCHW',input:256,
+    gh:'https://github.com/nomsams/imgsplash/releases/download/models/midas_small.onnx',
+    db:'https://dl.dropboxusercontent.com/scl/fi/ljsrtwxbd5oscq6hgthrk/midas_small.onnx?rlkey=emtxd6xhxsjrpq8j2jbabqoxn&dl=1'},
+  'db-midas-small':{type:'depth',label:'MiDaS v2.1 Small (Dropbox)',layout:'NCHW',input:256,
+    db:'https://dl.dropboxusercontent.com/scl/fi/ljsrtwxbd5oscq6hgthrk/midas_small.onnx?rlkey=emtxd6xhxsjrpq8j2jbabqoxn&dl=1'},
+  'gh-da-v2-small':{type:'depth',label:'Depth Anything v2 Small FP32 (GitHub)',layout:'NCHW',input:518,
+    gh:'https://github.com/nomsams/imgsplash/releases/download/models/depth_anything_v2_small.onnx',
+    db:'https://dl.dropboxusercontent.com/scl/fi/oif7z9iap5ua1wlef04e3/depth_anything_v2_small.onnx?rlkey=tfv2lz4xalrxp30fmoes006gy&dl=1'},
+  'db-da-v2-small':{type:'depth',label:'Depth Anything v2 Small FP32 (Dropbox)',layout:'NCHW',input:518,
+    db:'https://dl.dropboxusercontent.com/scl/fi/oif7z9iap5ua1wlef04e3/depth_anything_v2_small.onnx?rlkey=tfv2lz4xalrxp30fmoes006gy&dl=1'},
+  'gh-da-v2-small-int8':{type:'depth',label:'Depth Anything v2 Small INT8 (GitHub)',layout:'NCHW',input:518,
+    gh:'https://github.com/nomsams/imgsplash/releases/download/models/depth_anything_v2_small_int8.onnx',
+    db:'https://dl.dropboxusercontent.com/scl/fi/8brcbml22th9om9axdv5t/depth_anything_v2_small_int8.onnx?rlkey=rqkjeu0bd222xx9sr13qdywnz&dl=1'},
+  'db-da-v2-small-int8':{type:'depth',label:'Depth Anything v2 Small INT8 (Dropbox)',layout:'NCHW',input:518,
+    db:'https://dl.dropboxusercontent.com/scl/fi/8brcbml22th9om9axdv5t/depth_anything_v2_small_int8.onnx?rlkey=rqkjeu0bd222xx9sr13qdywnz&dl=1'}
+};
 
-    pvBox: $('pvBox'),
-    pvCanvas: $('pvCanvas'),
+function buildOpts(sel, keys){ sel.innerHTML=''; for(const k of keys){ const o=document.createElement('option'); o.value=k; o.textContent=MODELS[k].label; sel.appendChild(o);} }
+buildOpts(dom.selSeg,['db-yolov8n-seg','gh-yolov8n-seg','gh-fastsam-s','gh-fastsam-x','db-fastsam-x','edgegrow']);
+buildOpts(dom.selDepth,['db-da-v2-small','gh-da-v2-small','db-da-v2-small-int8','gh-da-v2-small-int8','db-midas-small','gh-midas-small','none']);
+dom.selSeg.value=S.segKey; dom.selDepth.value=S.depthKey;
 
-    thumbs: $('thumbs'),
-    thSeg: $('thSeg'),
-    thDepth: $('thDepth'),
-    thFinal: $('thFinal'),
+function log(...args){ const line=`[${new Date().toLocaleTimeString()}] ${args.join(' ')}`; dom.log.textContent+=line+'\n'; dom.log.scrollTop=dom.log.scrollHeight; console.debug(...args); }
+function showProg(){ dom.dlProg.style.display='block'; dom.dlBar.style.width='0%' } function setProg(p){ dom.dlBar.style.width=Math.max(0,Math.min(100,p)).toFixed(1)+'%'} function hideProg(){ dom.dlProg.style.display='none'}
+function status(t,ok=null){ dom.dlStatus.classList.remove('hidden'); dom.dlStatus.textContent=t; dom.dlStatus.style.background=ok===true?'#065f46':ok===false?'#7f1d1d':'#111827' }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function makeCanvas(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return c; }
 
-    logBtn: $('logBtn'),
-    logs: $('logs'),
-    log: $('log'),
-    btnClearLog: $('btnClearLog'),
-    btnClearCache: $('btnClearCache'),
-    btnSelfTest: $('btnSelfTest'),
+let idb=null;
+async function idbOpen(){ if(idb) return idb; idb=await new Promise((res,rej)=>{ const req=indexedDB.open('cspx-models',2); req.onupgradeneeded=()=>{ const db=req.result; if(!db.objectStoreNames.contains('onnx')) db.createObjectStore('onnx'); }; req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); return idb; }
+async function idbGet(k){ try{ const db=await idbOpen(); return await new Promise((res,rej)=>{ const tx=db.transaction('onnx','readonly'); const rq=tx.objectStore('onnx').get(k); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>rej(rq.error); }); }catch(e){ log('IDB get fail:',e.message||e); return null; } }
+async function idbSet(k,buf){ try{ const db=await idbOpen(); return await new Promise((res,rej)=>{ const tx=db.transaction('onnx','readwrite'); tx.objectStore('onnx').put(buf,k); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }catch(e){ log('IDB set fail:',e.message||e);} }
+async function idbClear(){ try{ const db=await idbOpen(); return await new Promise((res,rej)=>{ const tx=db.transaction('onnx','readwrite'); const rq=tx.objectStore('onnx').clear(); rq.onsuccess=()=>res(); rq.onerror=()=>rej(rq.error); }); }catch(e){ log('IDB clear fail:',e.message||e);} }
 
-    fileImage: $('fileImage'),
-
-    dlProg: $('dlProg'),
-    dlBar: $('dlBar'),
-    dlStatus: $('dlStatus'),
-  };
-
-  // ===== State =====
-  const S = {
-    aiOn: true,
-    img: null,
-    seed: null,
-    ed: {x:0,y:0,s:1},
-    segKey: 'edgegrow',
-    depthKey: 'none',
-    effect: 'seg',
-    sessions: Object.create(null),
-    cache: Object.create(null),
-    maskCanvas: null,
-    depthCanvas: null,
-    depthMap: null,
-  };
-
-  // ===== Models (exact links you gave) =====
-  const MODELS = {
-    // Segmentation
-    'edgegrow': {type:'seg', label:'No model (EdgeGrow)', input:640},
-
-    'gh-yolov8n-seg': {
-      type:'seg', label:'YOLOv8n-seg (GitHub)', input:640,
-      gh: 'https://github.com/nomsams/imgsplash/releases/download/models/yolov8n-seg.onnx',
-      db: 'https://dl.dropboxusercontent.com/scl/fi/g3hh1rpbn4es4pqbgypj8/yolov8n-seg.onnx?rlkey=0etbjr7tb8jsrctn2l3wv2amy&dl=1'
-    },
-    'db-yolov8n-seg': {
-      type:'seg', label:'YOLOv8n-seg (Dropbox)', input:640,
-      db: 'https://dl.dropboxusercontent.com/scl/fi/g3hh1rpbn4es4pqbgypj8/yolov8n-seg.onnx?rlkey=0etbjr7tb8jsrctn2l3wv2amy&dl=1'
-    },
-
-    'gh-fastsam-s': {
-      type:'seg', label:'FastSAM-s (GitHub)', input:640,
-      gh: 'https://github.com/nomsams/imgsplash/releases/download/models/FastSAM-s.onnx'
-    },
-    'gh-fastsam-x': {
-      type:'seg', label:'FastSAM-X (GitHub)', input:640,
-      gh: 'https://github.com/nomsams/imgsplash/releases/download/models/FastSam-X.onnx',
-      db: 'https://dl.dropboxusercontent.com/scl/fi/hpwyjvgc9yl0mbf2ty9dr/FastSam-X.onnx?rlkey=i9kfkcucagp5tb4qm0m1fgwm5&dl=1'
-    },
-    'db-fastsam-x': {
-      type:'seg', label:'FastSAM-X (Dropbox)', input:640,
-      db: 'https://dl.dropboxusercontent.com/scl/fi/hpwyjvgc9yl0mbf2ty9dr/FastSam-X.onnx?rlkey=i9kfkcucagp5tb4qm0m1fgwm5&dl=1'
-    },
-
-    // Depth
-    'none': {type:'depth', label:'None', input:256},
-    'gh-midas-small': {
-      type:'depth', label:'MiDaS v2.1 Small (GitHub)', input:256,
-      gh: 'https://github.com/nomsams/imgsplash/releases/download/models/midas_small.onnx',
-      db: 'https://dl.dropboxusercontent.com/scl/fi/ljsrtwxbd5oscq6hgthrk/midas_small.onnx?rlkey=emtxd6xhxsjrpq8j2jbabqoxn&dl=1'
-    },
-    'db-midas-small': {
-      type:'depth', label:'MiDaS v2.1 Small (Dropbox)', input:256,
-      db: 'https://dl.dropboxusercontent.com/scl/fi/ljsrtwxbd5oscq6hgthrk/midas_small.onnx?rlkey=emtxd6xhxsjrpq8j2jbabqoxn&dl=1'
-    },
-    'gh-da-v2-small': {
-      type:'depth', label:'Depth Anything v2 Small FP32 (GitHub)', input:518,
-      gh: 'https://github.com/nomsams/imgsplash/releases/download/models/depth_anything_v2_small.onnx',
-      db: 'https://dl.dropboxusercontent.com/scl/fi/oif7z9iap5ua1wlef04e3/depth_anything_v2_small.onnx?rlkey=tfv2lz4xalrxp30fmoes006gy&dl=1'
-    },
-    'db-da-v2-small': {
-      type:'depth', label:'Depth Anything v2 Small FP32 (Dropbox)', input:518,
-      db: 'https://dl.dropboxusercontent.com/scl/fi/oif7z9iap5ua1wlef04e3/depth_anything_v2_small.onnx?rlkey=tfv2lz4xalrxp30fmoes006gy&dl=1'
-    },
-    'gh-da-v2-small-int8': {
-      type:'depth', label:'Depth Anything v2 Small INT8 (GitHub)', input:518,
-      gh: 'https://github.com/nomsams/imgsplash/releases/download/models/depth_anything_v2_small_int8.onnx',
-      db: 'https://dl.dropboxusercontent.com/scl/fi/8brcbml22th9om9axdv5t/depth_anything_v2_small_int8.onnx?rlkey=rqkjeu0bd222xx9sr13qdywnz&dl=1'
-    },
-    'db-da-v2-small-int8': {
-      type:'depth', label:'Depth Anything v2 Small INT8 (Dropbox)', input:518,
-      db: 'https://dl.dropboxusercontent.com/scl/fi/8brcbml22th9om9axdv5t/depth_anything_v2_small_int8.onnx?rlkey=rqkjeu0bd222xx9sr13qdywnz&dl=1'
-    }
-  };
-
-  // Build dropdowns
-  function buildOpts(sel, keys){
-    sel.innerHTML='';
-    for(const k of keys){
-      const o = document.createElement('option');
-      o.value = k; o.textContent = MODELS[k].label ?? k;
-      sel.appendChild(o);
-    }
+async function fetchONNX(key){
+  if(S.cache[key]) return S.cache[key];
+  const cached=await idbGet(key);
+  if(cached){ log('Loaded from cache:',key, `${Math.round(cached.byteLength/1024)} KB`); const u8=new Uint8Array(cached); S.cache[key]=u8; return u8; }
+  const info=MODELS[key]; if(!info) throw new Error('Unknown model '+key);
+  async function fetchWithProgress(url){
+    log('Fetch:',url); status('Downloading…'); showProg(); setProg(0);
+    const resp=await fetch(url,{mode:'cors',redirect:'follow',referrerPolicy:'no-referrer'});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    const len=+(resp.headers.get('Content-Length')||0); const r=resp.body.getReader(); let rec=0; const chunks=[];
+    while(true){ const {value,done}=await r.read(); if(done) break; chunks.push(value); rec+=value.byteLength; if(len) setProg(rec/len*100); if(len) status(`Downloading… ${(rec/1048576).toFixed(2)} MB (${(rec/len*100).toFixed(1)}%)`); }
+    const blob=new Blob(chunks); const ab=await blob.arrayBuffer(); hideProg(); status(`Downloaded ${(ab.byteLength/1048576).toFixed(2)} MB`,true); return ab;
   }
-  buildOpts(dom.selSeg, ['edgegrow','gh-yolov8n-seg','db-yolov8n-seg','gh-fastsam-s','gh-fastsam-x','db-fastsam-x']);
-  buildOpts(dom.selDepth, ['none','gh-midas-small','db-midas-small','gh-da-v2-small','db-da-v2-small','gh-da-v2-small-int8','db-da-v2-small-int8']);
-  dom.selSeg.value = S.segKey; dom.selDepth.value = S.depthKey;
+  let buf=null;
+  if(info.gh){ for(let i=1;i<=3;i++){ try{ status(`GitHub attempt ${i}/3…`); buf=await fetchWithProgress(info.gh); break; }catch(e){ hideProg(); log(`GitHub attempt ${i} failed:`,e.message||e); await sleep(200);} } }
+  if(!buf && info.db){ try{ status('Trying Dropbox…'); buf=await fetchWithProgress(info.db); }catch(e){ hideProg(); status('Dropbox failed',false); throw e; } }
+  if(!buf) throw new Error('No source worked for '+key);
+  await idbSet(key,buf); const u8=new Uint8Array(buf); S.cache[key]=u8; return u8;
+}
+async function pickProviders(){ try{ const adapter=await navigator.gpu?.requestAdapter(); if(adapter && ort.env.webgpu) return ['webgpu','wasm']; }catch{} return ['wasm']; }
+async function ensureSession(key){
+  if(key==='edgegrow'||key==='none') return null;
+  if(S.sessions[key]) return S.sessions[key];
+  dom.aiStatus.textContent=`loading ${key}…`;
+  try{ const u8=await fetchONNX(key); const providers=await pickProviders(); log(`Create ORT session [${providers.join('+')}]`,key);
+    const sess=await ort.InferenceSession.create(u8,{executionProviders:providers,graphOptimizationLevel:'all'});
+    S.sessions[key]=sess; dom.aiStatus.textContent='ready'; status(`Model ready: ${MODELS[key].label}`,true); return sess;
+  }catch(e){ dom.aiStatus.textContent='failed'; status(`Model failed: ${MODELS[key].label}`,false); log('Model load failed:',key,e.message||e); throw e; }
+}
 
-  // ===== Logging =====
-  function log(...args){
-    const line = `[${new Date().toLocaleTimeString()}] ${args.join(' ')}`;
-    dom.log.textContent += line + '\n';
-    dom.log.scrollTop = dom.log.scrollHeight;
-    console.debug(...args);
+// Layout & canvases
+const ED={c:dom.edCanvas,ctx:dom.edCanvas.getContext('2d')}; const PV={c:dom.pvCanvas,ctx:dom.pvCanvas.getContext('2d')};
+function fitEditor(){ const w=dom.edBox.clientWidth,h=dom.edBox.clientHeight; ED.c.width=w; ED.c.height=h; if(!S.img) return; const s=Math.min(w/S.img.width,h/S.img.height); S.ed.s=s; S.ed.x=(w - S.img.width*s)/2; S.ed.y=(h - S.img.height*s)/2; }
+function drawEditor(){ const {ctx,c}=ED; ctx.clearRect(0,0,c.width,c.height); if(!S.img){ dom.edHint.style.display='block'; return; } dom.edHint.style.display='none'; ctx.save(); ctx.translate(S.ed.x,S.ed.y); ctx.scale(S.ed.s,S.ed.s); ctx.drawImage(S.img,0,0); if(S.seed){ ctx.strokeStyle='#2563eb'; ctx.lineWidth=1/S.ed.s; ctx.beginPath(); ctx.moveTo(S.seed.x-12,S.seed.y); ctx.lineTo(S.seed.x+12,S.seed.y); ctx.moveTo(S.seed.x,S.seed.y-12); ctx.lineTo(S.seed.x,S.seed.y+12); ctx.stroke(); } ctx.restore(); }
+function layoutPreview(){ if(!S.img) return; const r=dom.pvBox.getBoundingClientRect(); const asp=S.img.width/S.img.height; let w=r.width,h=w/asp; if(h>r.height){ h=r.height; w=h*asp; } PV.c.width=Math.round(w); PV.c.height=Math.round(h); PV.c.style.width=w+'px'; PV.c.style.height=h+'px'; }
+function renderPreview(){ if(!S.img){ PV.ctx.clearRect(0,0,PV.c.width,PV.c.height); return; } const {ctx,c}=PV; ctx.clearRect(0,0,c.width,c.height);
+  const tmp=makeCanvas(S.img.width,S.img.height), tx=tmp.getContext('2d'); tx.drawImage(S.img,0,0); const im=tx.getImageData(0,0,tmp.width,tmp.height), d=im.data;
+  for(let i=0;i<d.length;i+=4){ const y=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])|0; d[i]=y; d[i+1]=y; d[i+2]=y; d[i+3]=255; } tx.putImageData(im,0,0); ctx.drawImage(tmp,0,0,c.width,c.height);
+  const mask=buildFinalMaskFullRes(); const fg=makeCanvas(S.img.width,S.img.height), fx=fg.getContext('2d'); fx.drawImage(S.img,0,0); fx.globalCompositeOperation='destination-in'; fx.drawImage(mask,0,0); ctx.drawImage(fg,0,0,c.width,c.height);
+  drawThumbs(mask);
+}
+let lastHoverSide='right';
+function attachThumbHover(){ dom.thumbs.addEventListener('mouseenter',()=>{ dom.thumbs.classList.add('float'); if(lastHoverSide==='left'){ dom.thumbs.classList.add('left'); dom.thumbs.style.right='auto'; dom.thumbs.style.left='8px'; } else { dom.thumbs.classList.remove('left'); dom.thumbs.style.left='auto'; dom.thumbs.style.right='8px'; }});
+  dom.thumbs.addEventListener('mouseleave',()=>{ dom.thumbs.classList.remove('float'); dom.thumbs.classList.remove('left'); dom.thumbs.style.left=''; dom.thumbs.style.right='';});
+  dom.pvBox.addEventListener('mousemove',(e)=>{ const r=dom.pvBox.getBoundingClientRect(); const x=e.clientX-r.left; lastHoverSide=(x<r.width/2)?'right':'left';}); }
+function drawThumbs(finalMask){ if(!S.img) return; const W=S.img.width,H=S.img.height;
+  const segC=dom.thSeg,sx=segC.getContext('2d'); segC.width=240; segC.height=Math.round(segC.width*(H/W)); sx.fillStyle='#fff'; sx.fillRect(0,0,segC.width,segC.height);
+  if(S.maskCanvas){ const t=makeCanvas(W,H), x=t.getContext('2d'); x.drawImage(S.maskCanvas,0,0); const id=x.getImageData(0,0,W,H), d=id.data; for(let i=0;i<d.length;i+=4){ const a=d[i+3]; d[i]=0; d[i+1]=0; d[i+2]=0; d[i+3]=a?255:0; } x.putImageData(id,0,0); sx.imageSmoothingEnabled=false; sx.drawImage(t,0,0,W,H,0,0,segC.width,segC.height); }
+  const depC=dom.thDepth,dx=depC.getContext('2d'); depC.width=240; depC.height=Math.round(depC.width*(H/W)); dx.fillStyle='#fff'; dx.fillRect(0,0,depC.width,depC.height);
+  if(S.depthCanvas){ dx.imageSmoothingEnabled=false; dx.drawImage(S.depthCanvas,0,0,W,H,0,0,depC.width,depC.height);} else { dx.fillStyle='#cbd5e1'; dx.fillRect(0,0,depC.width,depC.height);}
+  const finC=dom.thFinal,fx=finC.getContext('2d'); finC.width=240; finC.height=Math.round(finC.width*(H/W)); fx.fillStyle='#fff'; fx.fillRect(0,0,finC.width,finC.height);
+  if(finalMask){ const t2=makeCanvas(W,H), x2=t2.getContext('2d'); x2.drawImage(finalMask,0,0); const id2=x2.getImageData(0,0,W,H), dd=id2.data; for(let i=0;i<dd.length;i+=4){ const a=dd[i+3]; dd[i]=0; dd[i+1]=0; dd[i+2]=0; dd[i+3]=a?255:0; } x2.putImageData(id2,0,0); fx.imageSmoothingEnabled=false; fx.drawImage(t2,0,0,W,H,0,0,finC.width,finC.height);}
+}
+
+function emptyMask(W,H){ return makeCanvas(W,H); }
+function intersect(a,b){ if(!a||!b) return null; const W=a.width,H=a.height,c=makeCanvas(W,H),x=c.getContext('2d'); x.drawImage(a,0,0); x.globalCompositeOperation='destination-in'; x.drawImage(b,0,0); return c; }
+function buildFinalMaskFullRes(){
+  const W=S.img.width,H=S.img.height,feather=+dom.numFeather.value||0; let seg=S.maskCanvas, depthMask=null, edgeMask=null;
+  if(['depth-band','seg-and-depth','seg-and-depth-and-edges','edge-bound-grow'].includes(S.effect) && S.depthMap){ depthMask=depthBand(S.depthMap,W,H,S.seed,+dom.rngBand.value); }
+  if(S.effect==='depth-thresh' && S.depthMap){ depthMask=depthThresh(S.depthMap,W,H,+dom.rngDepthT.value,true); }
+  if(['edges','seg-and-edges','seg-and-depth-and-edges','edge-bound-grow'].includes(S.effect)){ edgeMask=edgeMaskFromImage(S.img,+dom.rngEdgeT.value); }
+  let finalMask=null;
+  switch(S.effect){
+    case 'seg': finalMask=seg || edgeGrowMask(S.img,S.seed?.x??(W>>1),S.seed?.y??(H>>1)); break;
+    case 'depth-band':
+    case 'depth-thresh': finalMask=depthMask||emptyMask(W,H); break;
+    case 'edges': finalMask=edgeMask||emptyMask(W,H); break;
+    case 'seg-and-depth': finalMask=intersect(seg,depthMask)||seg||depthMask||emptyMask(W,H); break;
+    case 'seg-and-edges': finalMask=intersect(seg,edgeMask)||seg||edgeMask||emptyMask(W,H); break;
+    case 'seg-and-depth-and-edges': { const s_d=intersect(seg,depthMask); finalMask=intersect(s_d,edgeMask)||s_d||seg||depthMask||edgeMask||emptyMask(W,H); break; }
+    case 'edge-bound-grow': finalMask=edgeBoundGrow(S.img,S.seed,S.depthMap,+dom.rngBand.value,+dom.rngEdgeT.value); break;
+    default: finalMask=seg||emptyMask(W,H);
   }
+  if(feather>0){ const out=makeCanvas(W,H),x=out.getContext('2d'); x.filter=`blur(${feather}px)`; x.drawImage(finalMask,0,0); x.filter='none'; return out; }
+  return finalMask;
+}
+function depthBand(map,W,H,seed,band){ if(!seed) return null; const sd=map[seed.y*W+seed.x]; const lo=Math.max(0,sd-band),hi=Math.min(1,sd+band);
+  const c=makeCanvas(W,H),x=c.getContext('2d'),id=x.createImageData(W,H),d=id.data; for(let i=0;i<W*H;i++){ const ok=(map[i]>=lo&&map[i]<=hi)?255:0; const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=ok;}
+  x.putImageData(id,0,0); return c; }
+function depthThresh(map,W,H,thr,near=true){ const c=makeCanvas(W,H),x=c.getContext('2d'),id=x.createImageData(W,H),d=id.data; for(let i=0;i<W*H;i++){ const v=map[i]; const ok=near?(v<=thr):(v>=thr); const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=ok?255:0;} x.putImageData(id,0,0); return c;}
+function edgeMaskFromImage(img,thr=0.18){ const W=img.width,H=img.height,maxSide=1024,sc=Math.min(1,maxSide/Math.max(W,H)); const sw=Math.max(1,Math.round(W*sc)),sh=Math.max(1,Math.round(H*sc));
+  const sC=makeCanvas(sw,sh),sx=sC.getContext('2d'); sx.drawImage(img,0,0,sw,sh); const src=sx.getImageData(0,0,sw,sh).data;
+  const gray=new Float32Array(sw*sh); for(let i=0,j=0;i<gray.length;i++,j+=4) gray[i]=(0.2126*src[j]+0.7152*src[j+1]+0.0722*src[j+2])/255;
+  const sob=new Float32Array(sw*sh); const gxK=[-1,0,1,-2,0,2,-1,0,1],gyK=[-1,-2,-1,0,0,0,1,2,1];
+  for(let y=1;y<sh-1;y++){ for(let x=1;x<sw-1;x++){ let gx=0,gy=0,p=0; for(let ky=-1;ky<=1;ky++) for(let kx=-1;kx<=1;kx++){ const v=gray[(y+ky)*sw+(x+kx)]; gx+=v*gxK[p]; gy+=v*gyK[p]; p++; } sob[y*sw+x]=Math.hypot(gx,gy)/4; } }
+  const lap=new Float32Array(sw*sh); const lK=[0,1,0,1,-4,1,0,1,0];
+  for(let y=1;y<sh-1;y++){ for(let x=1;x<sw-1;x++){ let s=0,p=0; for(let ky=-1;ky<=1;ky++) for(let kx=-1;kx<=1;kx++){ const v=gray[(y+ky)*sw+(x+kx)]; s+=v*lK[p++]; } lap[y*sw+x]=Math.abs(s);} }
+  let mn=Infinity,mx=-Infinity; const comb=new Float32Array(sw*sh); for(let i=0;i<comb.length;i++){ const v=0.6*sob[i]+0.4*lap[i]; comb[i]=v; if(v<mn)mn=v; if(v>mx)mx=v; } const rng=mx-mn||1;
+  const mSmall=makeCanvas(sw,sh),msx=mSmall.getContext('2d'),id=msx.createImageData(sw,sh),d2=id.data; for(let i=0;i<comb.length;i++){ const v=(comb[i]-mn)/rng; const a=v>=thr?255:0; const o=i*4; d2[o]=255; d2[o+1]=255; d2[o+2]=255; d2[o+3]=a;}
+  msx.putImageData(id,0,0); const mFull=makeCanvas(W,H),fx=mFull.getContext('2d'); fx.imageSmoothingEnabled=false; fx.drawImage(mSmall,0,0,sw,sh,0,0,W,H); return mFull;}
+function edgeGrowMask(img,sx,sy){ const W=img.width,H=img.height,maxSide=1024,sc=Math.min(1,maxSide/Math.max(W,H)); const sw=Math.max(1,Math.round(W*sc)),sh=Math.max(1,Math.round(H*sc));
+  const sC=makeCanvas(sw,sh),sx2=sC.getContext('2d'); sx2.drawImage(img,0,0,sw,sh); const src=sx2.getImageData(0,0,sw,sh).data;
+  const seedX=clamp(Math.round(sx*sc),0,sw-1),seedY=clamp(Math.round(sy*sc),0,sh-1); const p=4*(seedY*sw+seedX),r0=src[p],g0=src[p+1],b0=src[p+2];
+  const tol=28,out=new Uint8Array(sw*sh),st=[[seedX,seedY]]; out[seedY*sw+seedX]=1;
+  while(st.length){ const [x,y]=st.pop(); for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){ if(nx<0||ny<0||nx>=sw||ny>=sh) continue; const id=ny*sw+nx; if(out[id]) continue; const q=4*id; const dr=src[q]-r0,dg=src[q+1]-g0,db=src[q+2]-b0; if(Math.hypot(dr,dg,db)<=tol){ out[id]=1; st.push([nx,ny]); } } }
+  const ms=makeCanvas(sw,sh),msx=ms.getContext('2d'),id=msx.createImageData(sw,sh),d=id.data; for(let i=0;i<sw*sh;i++){ const a=out[i]?255:0; const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=a;} msx.putImageData(id,0,0);
+  const mf=makeCanvas(W,H),fx=mf.getContext('2d'); fx.imageSmoothingEnabled=false; fx.drawImage(ms,0,0,sw,sh,0,0,W,H); return mf; }
+function edgeBoundGrow(img,seed,depthMap,band=0.07,edgeThr=0.18){ const W=img.width,H=img.height; if(!seed) return emptyMask(W,H);
+  const edges=edgeMaskFromImage(img,edgeThr); const ex=edges.getContext('2d'),ed=ex.getImageData(0,0,W,H).data;
+  let lo=-1,hi=2; if(depthMap){ const sd=depthMap[seed.y*W+seed.x]; lo=Math.max(0,sd-band); hi=Math.min(1,sd+band); }
+  const tmp=makeCanvas(W,H),tx=tmp.getContext('2d'); tx.drawImage(img,0,0); const src=tx.getImageData(0,0,W,H).data;
+  const p=4*(seed.y*W+seed.x),r0=src[p],g0=src[p+1],b0=src[p+2]; const tol=28; const out=new Uint8Array(W*H); const st=[[seed.x,seed.y]]; out[seed.y*W+seed.x]=1;
+  while(st.length){ const [x,y]=st.pop(); for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){ if(nx<0||ny<0||nx>=W||ny>=H) continue; const idx=ny*W+nx; if(out[idx]) continue; if(ed[idx*4+3]>0) continue; if(depthMap){ const v=depthMap[idx]; if(v<lo||v>hi) continue; } const q=4*idx; const dr=src[q]-r0,dg=src[q+1]-g0,db=src[q+2]-b0; if(Math.hypot(dr,dg,db)<=tol){ out[idx]=1; st.push([nx,ny]); } } }
+  const m=makeCanvas(W,H),mx=m.getContext('2d'),id=mx.createImageData(W,H),d=id.data; for(let i=0;i<W*H;i++){ const a=out[i]?255:0; const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=a;} mx.putImageData(id,0,0); return m; }
 
-  // ===== Progress / Status =====
-  function showProg(){ dom.dlProg.style.display='block'; dom.dlBar.style.width='0%' }
-  function setProg(pct){ dom.dlBar.style.width = Math.max(0,Math.min(100,pct)).toFixed(1)+'%' }
-  function hideProg(){ dom.dlProg.style.display='none' }
-  function status(text, ok=null){
-    dom.dlStatus.classList.remove('hidden');
-    dom.dlStatus.textContent = text;
-    dom.dlStatus.style.background = ok===true ? '#065f46' : ok===false ? '#7f1d1d' : '#111827';
+function packImage(img,size,layout){ const c=makeCanvas(size,size),x=c.getContext('2d'); x.fillStyle='#000'; x.fillRect(0,0,size,size);
+  const r=Math.min(size/img.width,size/img.height),nw=Math.round(img.width*r),nh=Math.round(img.height*r),dx=((size-nw)/2)|0,dy=((size-nh)/2)|0;
+  x.drawImage(img,dx,dy,nw,nh); const id=x.getImageData(0,0,size,size).data;
+  if(layout==='NCHW'){ const arr=new Float32Array(1*3*size*size); let oR=0,oG=size*size,oB=2*size*size; for(let y=0;y<size;y++)for(let x=0;x<size;x++){ const p=(y*size+x)*4; arr[oR++]=id[p]/255; arr[oG++]=id[p+1]/255; arr[oB++]=id[p+2]/255; } return {tensor:new ort.Tensor('float32',arr,[1,3,size,size]),scale:r,dx,dy}; }
+  else { const arr=new Float32Array(size*size*3); let j=0; for(let i=0;i<id.length;i+=4){ arr[j++]=id[i]/255; arr[j++]=id[i+1]/255; arr[j++]=id[i+2]/255; } return {tensor:new ort.Tensor('float32',arr,[1,size,size,3]),scale:r,dx,dy}; }
+}
+
+// SEG (supports YOLOv8-seg properly; unknown shapes → EdgeGrow fallback)
+async function runSeg(session,key,img,seed){
+  if(!session) return edgeGrowMask(img,seed?.x??(img.width>>1),seed?.y??(img.height>>1));
+  const info=MODELS[key],size=info.input||640,layout=info.layout||'NCHW';
+  const inputName=session.inputNames[0]||'image';
+  const pack=packImage(img,size,layout);
+  let out;
+  try{ out=await session.run({[inputName]:pack.tensor}); }
+  catch(e){ log('Seg run error (will fallback):',e.message||e); return edgeGrowMask(img,seed.x,seed.y); }
+  const names=Object.keys(out);
+  // YOLOv8-seg heuristic: one 3D det & one 4D proto
+  let proto=null,det=null;
+  for(const n of names){ const t=out[n]; if(t.dims.length===4) proto=t; else det=t; }
+  if(proto && det){ const m=await decodeYOLOMask(det,proto,size,pack.scale,pack.dx,pack.dy,img.width,img.height,seed); if(m) return m; }
+  log('Unknown seg outputs; fallback to EdgeGrow.'); return edgeGrowMask(img,seed.x,seed.y);
+}
+function IOU(a,b){ const xx1=Math.max(a.x1,b.x1),yy1=Math.max(a.y1,b.y1),xx2=Math.min(a.x2,b.x2),yy2=Math.min(a.y2,b.y2); const w=Math.max(0,xx2-xx1),h=Math.max(0,yy2-yy1); const inter=w*h,areaA=(a.x2-a.x1)*(a.y2-a.y1),areaB=(b.x2-b.x1)*(b.y2-b.y1); return inter/Math.max(1e-6,areaA+areaB-inter);}
+function nms(list,thr){ const keep=[]; for(const a of list){ let ok=true; for(const b of keep){ if(IOU(a,b)>thr){ ok=false; break;} } if(ok) keep.push(a);} return keep; }
+async function decodeYOLOMask(det,proto,inputSize,scale,dx,dy,outW,outH,seed){
+  const dd=det.data,ds=det.dims; if(ds.length!==3) return null; let N,C,major; if(ds[1]>ds[2]){ C=ds[1]; N=ds[2]; major=1; } else { C=ds[2]; N=ds[1]; major=2; }
+  const ps=proto.dims, M=ps[1], Hm=ps[2], Wm=ps[3];
+  const getVec=i=>{ const v=new Float32Array(C); if(major===1){ for(let c=0;c<C;c++) v[c]=dd[c*N+i]; } else { for(let c=0;c<C;c++) v[c]=dd[i*C+c]; } return v; };
+  const clsCount=Math.max(0,C-4-1-M); const cand=[];
+  for(let i=0;i<N;i++){ const v=getVec(i); const cx=v[0],cy=v[1],bw=v[2],bh=v[3],conf=v[4]; if(conf<0.2) continue; let bsc=-1; for(let c=0;c<clsCount;c++) bsc=Math.max(bsc,v[5+c]); const score=conf*(bsc>0?bsc:1); if(score<0.25) continue; const coeff=v.slice(5+clsCount,5+clsCount+M); cand.push({x1:cx-bw/2,y1:cy-bh/2,x2:cx+bw/2,y2:cy+bh/2,score,coeff}); }
+  cand.sort((a,b)=>b.score-a.score); const keep=nms(cand,0.5).slice(0,30); if(!keep.length) return null;
+  const P=new Float32Array(M*Hm*Wm); P.set(proto.data);
+  let bestCanvas=null,bestScore=-1;
+  for(const det of keep){
+    const c=det.coeff,flat=new Float32Array(Hm*Wm); for(let i=0;i<Hm*Wm;i++){ let s=0; for(let k=0;k<M;k++) s+=P[k*Hm*Wm+i]*c[k]; flat[i]=1/(1+Math.exp(-s)); }
+    const small=makeCanvas(Wm,Hm),sx=small.getContext('2d'),id=sx.createImageData(Wm,Hm);
+    for(let i=0;i<Hm*Wm;i++){ const a=(flat[i]*255)|0; const o=i*4; id.data[o]=255; id.data[o+1]=255; id.data[o+2]=255; id.data[o+3]=a; } sx.putImageData(id,0,0);
+    const big=makeCanvas(outW,outH),bx=big.getContext('2d'); bx.drawImage(small,0,0,inputSize,inputSize,-dx,-dy,inputSize/scale,inputSize/scale);
+    if(seed){ if(maskHit(big,seed.x,seed.y)) return big; const sc=det.score; if(sc>bestScore){ bestScore=sc; bestCanvas=big; } } else { if(det.score>bestScore){ bestScore=det.score; bestCanvas=big; } }
   }
-
-  // ===== IndexedDB (resilient) =====
-  let idb=null;
-  async function idbOpen(){
-    if(idb) return idb;
-    idb = await new Promise((res,rej)=>{
-      const req = indexedDB.open('cspx-models', 2);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if(!db.objectStoreNames.contains('onnx')) db.createObjectStore('onnx');
-      };
-      req.onsuccess = ()=> res(req.result);
-      req.onerror = ()=> rej(req.error);
-    });
-    return idb;
-  }
-  async function idbGet(key){
-    try{
-      const db = await idbOpen();
-      return await new Promise((res,rej)=>{
-        const tx=db.transaction('onnx','readonly');
-        const rq=tx.objectStore('onnx').get(key);
-        rq.onsuccess=()=>res(rq.result||null);
-        rq.onerror=()=>rej(rq.error);
-      });
-    }catch(e){ log('IDB get fail:', e.message||e); return null; }
-  }
-  async function idbSet(key, buf){
-    try{
-      const db = await idbOpen();
-      return await new Promise((res,rej)=>{
-        const tx=db.transaction('onnx','readwrite');
-        tx.objectStore('onnx').put(buf, key);
-        tx.oncomplete=()=>res();
-        tx.onerror=()=>rej(tx.error);
-      });
-    }catch(e){ log('IDB set fail:', e.message||e); }
-  }
-  async function idbClear(){
-    try{
-      const db = await idbOpen();
-      return await new Promise((res,rej)=>{
-        const tx=db.transaction('onnx','readwrite');
-        const rq=tx.objectStore('onnx').clear();
-        rq.onsuccess=()=>res();
-        rq.onerror=()=>rej(rq.error);
-      });
-    }catch(e){ log('IDB clear fail:', e.message||e); }
-  }
-
-  // ===== Fetch with progress (GH→DB fallback) =====
-  async function fetchONNX(key){
-    if(S.cache[key]) return S.cache[key];
-    const cached = await idbGet(key);
-    if(cached){
-      log('Loaded from cache:', key, `${Math.round(cached.byteLength/1024)} KB`);
-      S.cache[key]=new Uint8Array(cached);
-      return S.cache[key];
-    }
-
-    const info = MODELS[key];
-    if(!info) throw new Error('Unknown model '+key);
-    let buf = null;
-
-    async function fetchWithProgress(url){
-      log('Fetch:', url);
-      status('Downloading…');
-      showProg(); setProg(0);
-      const t0=performance.now();
-      const resp = await fetch(url, {mode:'cors', redirect:'follow', referrerPolicy:'no-referrer'});
-      if(!resp.ok) throw new Error('HTTP '+resp.status);
-      const len = +(resp.headers.get('Content-Length')||0);
-      const reader = resp.body.getReader();
-      let rec=0; const chunks=[];
-      while(true){
-        const {value, done}=await reader.read();
-        if(done) break;
-        chunks.push(value); rec += value.byteLength;
-        if(len) setProg(rec/len*100);
-        const mb=(rec/1048576).toFixed(2);
-        if(len){ status(`Downloading… ${mb} MB (${(rec/len*100).toFixed(1)}%)`); }
-        else { status(`Downloading… ${mb} MB`); }
-      }
-      const blob = new Blob(chunks);
-      const ab = await blob.arrayBuffer();
-      hideProg();
-      const mb=(ab.byteLength/1048576).toFixed(2);
-      status(`Downloaded ${mb} MB`, true);
-      log('ONNX bytes:', ab.byteLength);
-      return ab;
-    }
-
-    // Try GitHub up to 3 times if available
-    if(info.gh){
-      for(let i=1;i<=3;i++){
-        try{
-          status(`GitHub attempt ${i}/3…`);
-          buf = await fetchWithProgress(info.gh);
-          break;
-        }catch(e){
-          hideProg();
-          log(`GitHub attempt ${i} failed:`, e.message||e);
-          await sleep(250);
-        }
-      }
-    }
-    // Dropbox fallback
-    if(!buf && info.db){
-      try{
-        status('Trying Dropbox…');
-        buf = await fetchWithProgress(info.db);
-      }catch(e){
-        hideProg(); status('Dropbox failed', false);
-        throw e;
-      }
-    }
-    if(!buf) throw new Error('No source worked for '+key);
-
-    await idbSet(key, buf);
-    const u8 = new Uint8Array(buf);
-    S.cache[key]=u8;
-    return u8;
-  }
-
-  async function ensureSession(key){
-    if(key==='edgegrow' || key==='none') return null;
-    if(S.sessions[key]) return S.sessions[key];
-
-    dom.aiStatus.textContent = `loading ${key}…`;
-    try{
-      const u8 = await fetchONNX(key);
-      const providers = await pickProviders();
-      log(`Create ORT session [${providers.join('+')}]`, key);
-      const sess = await ort.InferenceSession.create(u8, {
-        executionProviders: providers,
-        graphOptimizationLevel:'all'
-      });
-      S.sessions[key]=sess;
-      dom.aiStatus.textContent = 'ready';
-      status(`Model ready: ${MODELS[key].label}`, true);
-      return sess;
-    }catch(e){
-      dom.aiStatus.textContent = 'failed';
-      status(`Model failed: ${MODELS[key].label}`, false);
-      log('Model load failed:', key, e.message||e);
-      throw e;
-    }
-  }
-
-  async function pickProviders(){
-    try{
-      const adapter = await navigator.gpu?.requestAdapter();
-      if(adapter && ort.env.webgpu) return ['webgpu','wasm'];
-    }catch{}
-    return ['wasm'];
-  }
-
-  // ===== Canvas layout =====
-  const ED = { c: dom.edCanvas, ctx: dom.edCanvas.getContext('2d') };
-  const PV = { c: dom.pvCanvas, ctx: dom.pvCanvas.getContext('2d') };
-
-  function fitEditor(){
-    const w = dom.edBox.clientWidth, h = dom.edBox.clientHeight;
-    ED.c.width = w; ED.c.height = h;
-    if(!S.img) return;
-    const s = Math.min(w/S.img.width, h/S.img.height);
-    S.ed.s = s;
-    S.ed.x = (w - S.img.width*s)/2;
-    S.ed.y = (h - S.img.height*s)/2;
-  }
-  function drawEditor(){
-    const {ctx,c} = ED;
-    ctx.clearRect(0,0,c.width,c.height);
-    if(!S.img){ dom.edHint.style.display='block'; return; }
-    dom.edHint.style.display='none';
-    ctx.save();
-    ctx.translate(S.ed.x, S.ed.y);
-    ctx.scale(S.ed.s, S.ed.s);
-    ctx.drawImage(S.img, 0,0);
-    if(S.seed){
-      ctx.strokeStyle='#2563eb'; ctx.lineWidth=1/S.ed.s;
-      ctx.beginPath(); ctx.moveTo(S.seed.x-12,S.seed.y); ctx.lineTo(S.seed.x+12,S.seed.y);
-      ctx.moveTo(S.seed.x, S.seed.y-12); ctx.lineTo(S.seed.x, S.seed.y+12); ctx.stroke();
-    }
-    ctx.restore();
-  }
-  function layoutPreview(){
-    if(!S.img) return;
-    const r = dom.pvBox.getBoundingClientRect();
-    const asp = S.img.width/S.img.height;
-    let w=r.width, h=w/asp; if(h>r.height){ h=r.height; w=h*asp; }
-    PV.c.width = Math.round(w); PV.c.height = Math.round(h);
-    PV.c.style.width = w+'px'; PV.c.style.height = h+'px';
-  }
-  function renderPreview(){
-    if(!S.img) { PV.ctx.clearRect(0,0,PV.c.width,PV.c.height); return; }
-    const {ctx,c} = PV; ctx.clearRect(0,0,c.width,c.height);
-
-    // background grayscale
-    const tmp = makeCanvas(S.img.width, S.img.height), tx=tmp.getContext('2d');
-    tx.drawImage(S.img,0,0);
-    const im = tx.getImageData(0,0,tmp.width,tmp.height);
-    const d = im.data;
-    for(let i=0;i<d.length;i+=4){
-      const y = (0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2])|0;
-      d[i]=y; d[i+1]=y; d[i+2]=y; d[i+3]=255;
-    }
-    tx.putImageData(im,0,0);
-    ctx.drawImage(tmp, 0,0,c.width,c.height);
-
-    // foreground via final mask
-    const mask = buildFinalMaskFullRes();
-    const fg = makeCanvas(S.img.width,S.img.height), fx=fg.getContext('2d');
-    fx.drawImage(S.img,0,0);
-    fx.globalCompositeOperation='destination-in';
-    fx.drawImage(mask,0,0);
-    ctx.drawImage(fg, 0,0, c.width,c.height);
-
-    drawThumbs(mask);
-  }
-
-  // ===== Utilities =====
-  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-  function makeCanvas(w,h){ const c=document.createElement('canvas'); c.width=w; c.height=h; return c; }
-
-  // ===== Thumbs (with hover float) =====
-  function drawThumbs(finalMask){
-    if(!S.img) return;
-    const W=S.img.width, H=S.img.height;
-
-    // Seg mask thumb (black on white)
-    const segC = dom.thSeg, sx=segC.getContext('2d');
-    segC.width = 240; segC.height = Math.round(segC.width*(H/W));
-    sx.fillStyle='#fff'; sx.fillRect(0,0,segC.width,segC.height);
-    if(S.maskCanvas){
-      const tmp = makeCanvas(W,H), x=tmp.getContext('2d');
-      x.drawImage(S.maskCanvas,0,0);
-      const id = x.getImageData(0,0,W,H), d=id.data;
-      for(let i=0;i<d.length;i+=4){ const a=d[i+3]; d[i]=0; d[i+1]=0; d[i+2]=0; d[i+3]=a?255:0; }
-      x.putImageData(id,0,0);
-      sx.imageSmoothingEnabled=false;
-      sx.drawImage(tmp, 0,0,W,H, 0,0, segC.width,segC.height);
-    }
-
-    // Depth thumb (grayscale)
-    const depC = dom.thDepth, dx=depC.getContext('2d');
-    depC.width = 240; depC.height = Math.round(depC.width*(H/W));
-    dx.fillStyle='#fff'; dx.fillRect(0,0,depC.width,depC.height);
-    if(S.depthCanvas){
-      dx.imageSmoothingEnabled=false;
-      dx.drawImage(S.depthCanvas, 0,0,W,H, 0,0, depC.width,depC.height);
-    }else{
-      dx.fillStyle='#cbd5e1'; dx.fillRect(0,0,depC.width,depC.height);
-    }
-
-    // Final mask thumb (black)
-    const finC = dom.thFinal, fx=finC.getContext('2d');
-    finC.width = 240; finC.height = Math.round(finC.width*(H/W));
-    fx.fillStyle='#fff'; fx.fillRect(0,0,finC.width,finC.height);
-    if(finalMask){
-      const tmp2 = makeCanvas(W,H), x2=tmp2.getContext('2d');
-      x2.drawImage(finalMask,0,0);
-      const id2 = x2.getImageData(0,0,W,H), dd=id2.data;
-      for(let i=0;i<dd.length;i+=4){ const a=dd[i+3]; dd[i]=0; dd[i+1]=0; dd[i+2]=0; dd[i+3]=a?255:0; }
-      x2.putImageData(id2,0,0);
-      fx.imageSmoothingEnabled=false;
-      fx.drawImage(tmp2, 0,0,W,H, 0,0, finC.width,finC.height);
-    }
-  }
-
-  // Float thumbs on hover (opposite side of cursor)
-  let lastHoverSide = 'right';
-  function attachThumbHover(){
-    // Enter thumbs → float; position left/right based on mouse last position in pvBox
-    dom.thumbs.addEventListener('mouseenter', ()=>{
-      dom.thumbs.classList.add('float');
-      if(lastHoverSide==='left'){ dom.thumbs.classList.add('left'); dom.thumbs.style.right='auto'; dom.thumbs.style.left='8px'; }
-      else { dom.thumbs.classList.remove('left'); dom.thumbs.style.left='auto'; dom.thumbs.style.right='8px'; }
-    });
-    dom.thumbs.addEventListener('mouseleave', ()=>{
-      dom.thumbs.classList.remove('float');
-      dom.thumbs.classList.remove('left');
-      dom.thumbs.style.left='';
-      dom.thumbs.style.right='';
-    });
-    dom.pvBox.addEventListener('mousemove', (e)=>{
-      const r=dom.pvBox.getBoundingClientRect();
-      const x=e.clientX - r.left;
-      lastHoverSide = (x<r.width/2) ? 'right' : 'left'; // flip to opposite side
-    });
-  }
-
-  // ===== Masks & Effects =====
-  function buildFinalMaskFullRes(){
-    const W=S.img.width, H=S.img.height, feather = +dom.numFeather.value||0;
-    let seg = S.maskCanvas;
-    let depthMask = null;
-    let edgeMask = null;
-
-    if(['depth-band','seg-and-depth','seg-and-depth-and-edges','edge-bound-grow'].includes(S.effect) && S.depthMap){
-      depthMask = depthBand(S.depthMap, W,H, S.seed, +dom.rngBand.value);
-    }
-    if(S.effect==='depth-thresh' && S.depthMap){
-      depthMask = depthThresh(S.depthMap, W,H, +dom.rngDepthT.value, true);
-    }
-    if(['edges','seg-and-edges','seg-and-depth-and-edges','edge-bound-grow'].includes(S.effect)){
-      edgeMask = edgeMaskFromImage(S.img, +dom.rngEdgeT.value);
-    }
-
-    let finalMask=null;
-    switch(S.effect){
-      case 'seg': finalMask = seg || edgeGrowMask(S.img, S.seed?.x??(W>>1), S.seed?.y??(H>>1)); break;
-      case 'depth-band':
-      case 'depth-thresh': finalMask = depthMask || emptyMask(W,H); break;
-      case 'edges': finalMask = edgeMask || emptyMask(W,H); break;
-      case 'seg-and-depth': finalMask = intersect(seg, depthMask) || seg || depthMask || emptyMask(W,H); break;
-      case 'seg-and-edges': finalMask = intersect(seg, edgeMask) || seg || edgeMask || emptyMask(W,H); break;
-      case 'seg-and-depth-and-edges': {
-        const s_d = intersect(seg, depthMask);
-        finalMask = intersect(s_d, edgeMask) || s_d || seg || depthMask || edgeMask || emptyMask(W,H);
-        break;
-      }
-      case 'edge-bound-grow': {
-        finalMask = edgeBoundGrow(S.img, S.seed, S.depthMap, +dom.rngBand.value, +dom.rngEdgeT.value);
-        break;
-      }
-      default: finalMask = seg || emptyMask(W,H);
-    }
-
-    if(feather>0){
-      const out=makeCanvas(W,H), x=out.getContext('2d');
-      x.filter=`blur(${feather}px)`; x.drawImage(finalMask,0,0); x.filter='none';
-      return out;
-    }
-    return finalMask;
-  }
-
-  function emptyMask(W,H){ return makeCanvas(W,H); }
-  function intersect(a,b){
-    if(!a||!b) return null;
-    const W=a.width,H=a.height, c=makeCanvas(W,H), x=c.getContext('2d');
-    x.drawImage(a,0,0); x.globalCompositeOperation='destination-in'; x.drawImage(b,0,0); return c;
-  }
-
-  function depthBand(map, W,H, seed, band){
-    if(!seed) return null;
-    const sd = map[seed.y*W + seed.x];
-    const lo=Math.max(0,sd-band), hi=Math.min(1,sd+band);
-    const c=makeCanvas(W,H), x=c.getContext('2d'), id=x.createImageData(W,H), d=id.data;
-    for(let i=0;i<W*H;i++){
-      const ok = (map[i]>=lo && map[i]<=hi) ? 255 : 0;
-      const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=ok;
-    }
-    x.putImageData(id,0,0); return c;
-  }
-  function depthThresh(map, W,H, thr, near=true){
-    const c=makeCanvas(W,H), x=c.getContext('2d'), id=x.createImageData(W,H), d=id.data;
-    for(let i=0;i<W*H;i++){
-      const v=map[i]; const ok=near?(v<=thr):(v>=thr);
-      const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=ok?255:0;
-    }
-    x.putImageData(id,0,0); return c;
-  }
-  function edgeMaskFromImage(img, thr=0.18){
-    const W=img.width,H=img.height, maxSide=1024, sc=Math.min(1, maxSide/Math.max(W,H));
-    const sw=Math.max(1,Math.round(W*sc)), sh=Math.max(1,Math.round(H*sc));
-    const sC=makeCanvas(sw,sh), sx=sC.getContext('2d'); sx.drawImage(img,0,0,sw,sh);
-    const src=sx.getImageData(0,0,sw,sh).data;
-    const gray=new Float32Array(sw*sh);
-    for(let i=0,j=0;i<gray.length;i++,j+=4) gray[i]=(0.2126*src[j]+0.7152*src[j+1]+0.0722*src[j+2])/255;
-
-    // Sobel
-    const sob=new Float32Array(sw*sh);
-    const gxK=[-1,0,1,-2,0,2,-1,0,1], gyK=[-1,-2,-1,0,0,0,1,2,1];
-    for(let y=1;y<sh-1;y++){
-      for(let x=1;x<sw-1;x++){
-        let gx=0,gy=0,p=0;
-        for(let ky=-1;ky<=1;ky++) for(let kx=-1;kx<=1;kx++){
-          const v=gray[(y+ky)*sw + (x+kx)];
-          gx += v*gxK[p]; gy += v*gyK[p]; p++;
-        }
-        sob[y*sw+x]=Math.hypot(gx,gy)/4;
-      }
-    }
-    // Laplacian
-    const lap=new Float32Array(sw*sh); const lK=[0,1,0,1,-4,1,0,1,0];
-    for(let y=1;y<sh-1;y++){
-      for(let x=1;x<sw-1;x++){
-        let s=0,p=0;
-        for(let ky=-1;ky<=1;ky++) for(let kx=-1;kx<=1;kx++){
-          const v=gray[(y+ky)*sw + (x+kx)]; s+=v*lK[p++]; }
-        lap[y*sw+x]=Math.abs(s);
-      }
-    }
-
-    // Combine
-    let mn=Infinity,mx=-Infinity; const comb=new Float32Array(sw*sh);
-    for(let i=0;i<comb.length;i++){ const v=0.6*sob[i]+0.4*lap[i]; comb[i]=v; if(v<mn)mn=v; if(v>mx)mx=v; }
-    const rng=mx-mn || 1;
-
-    const mSmall=makeCanvas(sw,sh), msx=mSmall.getContext('2d'), id=msx.createImageData(sw,sh), d=id.data;
-    for(let i=0;i<comb.length;i++){
-      const v=(comb[i]-mn)/rng; const a=v>=thr?255:0;
-      const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=a;
-    }
-    msx.putImageData(id,0,0);
-
-    const mFull=makeCanvas(W,H), fx=mFull.getContext('2d'); fx.imageSmoothingEnabled=false;
-    fx.drawImage(mSmall,0,0,sw,sh, 0,0,W,H);
-    return mFull;
-  }
-  function edgeBoundGrow(img, seed, depthMap, band=0.07, edgeThr=0.18){
-    const W=img.width,H=img.height;
-    if(!seed) return emptyMask(W,H);
-    const edges = edgeMaskFromImage(img, edgeThr);
-    const ex = edges.getContext('2d'), ed = ex.getImageData(0,0,W,H).data;
-
-    let lo=-1,hi=2;
-    if(depthMap){
-      const sd=depthMap[seed.y*W+seed.x]; lo=Math.max(0,sd-band); hi=Math.min(1,sd+band);
-    }
-
-    const tmp=makeCanvas(W,H), tx=tmp.getContext('2d'); tx.drawImage(img,0,0);
-    const src=tx.getImageData(0,0,W,H).data;
-    const p=4*(seed.y*W+seed.x), r0=src[p],g0=src[p+1],b0=src[p+2];
-    const tol=28;
-    const out=new Uint8Array(W*H);
-    const st=[[seed.x,seed.y]]; out[seed.y*W+seed.x]=1;
-
-    while(st.length){
-      const [x,y]=st.pop();
-      for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
-        if(nx<0||ny<0||nx>=W||ny>=H) continue;
-        const idx=ny*W+nx; if(out[idx]) continue;
-        if(ed[idx*4+3]>0) continue; // stop at edges
-        if(depthMap){ const v=depthMap[idx]; if(v<lo||v>hi) continue; }
-        const q=4*idx; const dr=src[q]-r0,dg=src[q+1]-g0,db=src[q+2]-b0;
-        if(Math.hypot(dr,dg,db)<=tol){ out[idx]=1; st.push([nx,ny]); }
-      }
-    }
-    const m=makeCanvas(W,H), mx=m.getContext('2d'), id=mx.createImageData(W,H), d=id.data;
-    for(let i=0;i<W*H;i++){ const a=out[i]?255:0; const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=a; }
-    mx.putImageData(id,0,0);
-    return m;
-  }
-  function edgeGrowMask(img, sx, sy){
-    const W=img.width,H=img.height, maxSide=1024, sc=Math.min(1, maxSide/Math.max(W,H));
-    const sw=Math.max(1,Math.round(W*sc)), sh=Math.max(1,Math.round(H*sc));
-    const sC=makeCanvas(sw,sh), sx2=sC.getContext('2d'); sx2.drawImage(img,0,0,sw,sh);
-    const src=sx2.getImageData(0,0,sw,sh).data;
-    const seedX=clamp(Math.round(sx*sc),0,sw-1), seedY=clamp(Math.round(sy*sc),0,sh-1);
-    const p=4*(seedY*sw+seedX), r0=src[p],g0=src[p+1],b0=src[p+2];
-    const tol=28, out=new Uint8Array(sw*sh), st=[[seedX,seedY]]; out[seedY*sw+seedX]=1;
-    while(st.length){
-      const [x,y]=st.pop();
-      for(const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]){
-        if(nx<0||ny<0||nx>=sw||ny>=sh) continue;
-        const id=ny*sw+nx; if(out[id]) continue;
-        const q=4*id; const dr=src[q]-r0,dg=src[q+1]-g0,db=src[q+2]-b0;
-        if(Math.hypot(dr,dg,db)<=tol){ out[id]=1; st.push([nx,ny]); }
-      }
-    }
-    const ms=makeCanvas(sw,sh), msx=ms.getContext('2d'), id=msx.createImageData(sw,sh), d=id.data;
-    for(let i=0;i<sw*sh;i++){ const a=out[i]?255:0; const o=i*4; d[o]=255; d[o+1]=255; d[o+2]=255; d[o+3]=a; }
-    msx.putImageData(id,0,0);
-    const mf=makeCanvas(W,H), fx=mf.getContext('2d'); fx.imageSmoothingEnabled=false;
-    fx.drawImage(ms,0,0,sw,sh, 0,0,W,H);
-    return mf;
-  }
-
-  // ===== Segmentation & Depth (ONNX) =====
-  async function runSeg(session, key, img, seed){
-    if(!session) return edgeGrowMask(img, seed?.x??(img.width>>1), seed?.y??(img.height>>1));
-    const info=MODELS[key], size=info.input||640;
-
-    const inputName = session.inputNames[0];
-    const meta = session.inputMetadata?.[inputName];
-    const dims = meta?.dimensions || meta?.dims || [];
-    const pack = letterboxFlex(img, size, dims); // auto NCHW/NHWC
-
-    const out = await session.run({[inputName]: pack.tensor});
-    const names = Object.keys(out);
-    let proto=null, det=null;
-    for(const n of names){
-      const t=out[n]; const rank=t.dims.length;
-      if(rank===4) proto=t; else det=t;
-    }
-    if(!proto || !det){ log('Seg outputs unexpected; fallback'); return edgeGrowMask(img, seed.x, seed.y); }
-    const mask = await decodeYOLOMask(det, proto, size, pack.scale, pack.dx, pack.dy, img.width, img.height, seed);
-    return mask || edgeGrowMask(img, seed.x, seed.y);
-  }
-
-  function letterboxFlex(img, size, dims){
-    const isNCHW = dims && dims.length===4 && (dims[1]===3 || (dims[1]===-1 && dims[3]!==3));
-    const c=makeCanvas(size,size), x=c.getContext('2d');
-    x.fillStyle='#000'; x.fillRect(0,0,size,size);
-    const r=Math.min(size/img.width, size/img.height), nw=Math.round(img.width*r), nh=Math.round(img.height*r);
-    const dx=((size-nw)/2)|0, dy=((size-nh)/2)|0;
-    x.drawImage(img, dx,dy,nw,nh);
-    const id=x.getImageData(0,0,size,size).data;
-    if(isNCHW){
-      const arr=new Float32Array(1*3*size*size);
-      let oR=0,oG=size*size,oB=2*size*size;
-      for(let y=0;y<size;y++) for(let x=0;x<size;x++){ const p=(y*size+x)*4; arr[oR++]=id[p]/255; arr[oG++]=id[p+1]/255; arr[oB++]=id[p+2]/255; }
-      return {tensor:new ort.Tensor('float32',arr,[1,3,size,size]), scale:r, dx, dy};
-    }else{
-      const arr=new Float32Array(size*size*3); let j=0;
-      for(let i=0;i<id.length;i+=4){ arr[j++]=id[i]/255; arr[j++]=id[i+1]/255; arr[j++]=id[i+2]/255; }
-      return {tensor:new ort.Tensor('float32',arr,[1,size,size,3]), scale:r, dx, dy};
-    }
-  }
-
-  function IOU(a,b){
-    const xx1=Math.max(a.x1,b.x1), yy1=Math.max(a.y1,b.y1);
-    const xx2=Math.min(a.x2,b.x2), yy2=Math.min(a.y2,b.y2);
-    const w=Math.max(0,xx2-xx1), h=Math.max(0,yy2-yy1);
-    const inter=w*h, areaA=(a.x2-a.x1)*(a.y2-a.y1), areaB=(b.x2-b.x1)*(b.y2-b.y1);
-    return inter / Math.max(1e-6, areaA+areaB-inter);
-  }
-  function nms(list, thr){
-    const keep=[];
-    for(const a of list){
-      let ok=true;
-      for(const b of keep){ if(IOU(a,b)>thr){ ok=false; break; } }
-      if(ok) keep.push(a);
-    }
-    return keep;
-  }
-
-  async function decodeYOLOMask(det, proto, inputSize, scale, dx, dy, outW, outH, seed){
-    const dd=det.data, ds=det.dims;
-    let N,C,major;
-    if(ds.length===3){
-      if(ds[1]>ds[2]){ C=ds[1]; N=ds[2]; major=1; } else { C=ds[2]; N=ds[1]; major=2; }
-    } else return null;
-
-    const ps=proto.dims, M=ps[1], Hm=ps[2], Wm=ps[3];
-    const getVector = (i)=>{
-      const v=new Float32Array(C);
-      if(major===1){ for(let c=0;c<C;c++) v[c]=dd[c*N+i]; }
-      else { for(let c=0;c<C;c++) v[c]=dd[i*C+c]; }
-      return v;
-    };
-
-    const clsCount=Math.max(0, C - 4 - 1 - M);
-    const cand=[];
-    for(let i=0;i<N;i++){
-      const v=getVector(i);
-      const cx=v[0], cy=v[1], bw=v[2], bh=v[3], conf=v[4];
-      if(conf<0.2) continue;
-      let best=-1,bsc=-1;
-      for(let c=0;c<clsCount;c++){ const sc=v[5+c]; if(sc>bsc){ bsc=sc; best=c; } }
-      const score= conf * (bsc>0?bsc:1);
-      if(score<0.25) continue;
-      const coeff=v.slice(5+clsCount, 5+clsCount+M);
-      cand.push({x1:cx-bw/2, y1:cy-bh/2, x2:cx+bw/2, y2:cy+bh/2, score, coeff});
-    }
-    cand.sort((a,b)=> b.score-a.score);
-    const keep=nms(cand, 0.5).slice(0,30);
-    if(!keep.length) return null;
-
-    const P=new Float32Array(M*Hm*Wm); P.set(proto.data);
-    let bestCanvas=null, bestScore=-1;
-
-    for(const det of keep){
-      const c = det.coeff;
-      const flat=new Float32Array(Hm*Wm);
-      for(let i=0;i<Hm*Wm;i++){
-        let s=0; for(let k=0;k<M;k++) s += P[k*Hm*Wm + i] * c[k];
-        flat[i]=1/(1+Math.exp(-s));
-      }
-      const small=makeCanvas(Wm,Hm), sx=small.getContext('2d'), id=sx.createImageData(Wm,Hm);
-      for(let i=0;i<Hm*Wm;i++){ const a=(flat[i]*255)|0; const o=i*4; id.data[o]=255; id.data[o+1]=255; id.data[o+2]=255; id.data[o+3]=a; }
-      sx.putImageData(id,0,0);
-      const big=makeCanvas(outW,outH), bx=big.getContext('2d');
-      bx.drawImage(small, 0,0, inputSize,inputSize, -dx, -dy, inputSize/scale, inputSize/scale);
-
-      if(seed){
-        if(maskHit(big, seed.x, seed.y)) return big;
-        const dist = Math.hypot(seed.x,seed.y); // simple tiebreaker
-        const sc = det.score / (1 + 0.001*dist);
-        if(sc>bestScore){ bestScore=sc; bestCanvas=big; }
-      }else{
-        if(det.score>bestScore){ bestScore=det.score; bestCanvas=big; }
-      }
-    }
-    return bestCanvas;
-  }
-  function maskHit(maskC, x, y){
-    const ctx=maskC.getContext('2d'); const d=ctx.getImageData(clamp(x|0,0,maskC.width-1), clamp(y|0,0,maskC.height-1),1,1).data;
-    return d[3]>10;
-  }
-
-  async function runDepth(session, key, img){
-    if(!session) return {canvas:null, map:null};
-    const info=MODELS[key], size=info.input||256;
-
-    const inputName=session.inputNames[0];
-    const meta=session.inputMetadata?.[inputName];
-    const dims=meta?.dimensions || meta?.dims || [];
-    const isNCHW = dims && dims.length===4 && (dims[1]===3 || (dims[1]===-1 && dims[3]!==3));
-
-    const c=makeCanvas(size,size), x=c.getContext('2d');
-    x.fillStyle='#000'; x.fillRect(0,0,size,size);
-    const r=Math.min(size/img.width, size/img.height), nw=(img.width*r)|0, nh=(img.height*r)|0;
-    const dx=((size-nw)/2)|0, dy=((size-nh)/2)|0;
-    x.drawImage(img, dx,dy,nw,nh);
-    const id=x.getImageData(0,0,size,size).data;
-
-    let tensor=null;
-    if(isNCHW){
-      const arr=new Float32Array(1*3*size*size);
-      let oR=0,oG=size*size,oB=2*size*size;
-      for(let y=0;y<size;y++) for(let x=0;x<size;x++){ const p=(y*size+x)*4; arr[oR++]=id[p]/255; arr[oG++]=id[p+1]/255; arr[oB++]=id[p+2]/255; }
-      tensor=new ort.Tensor('float32',arr,[1,3,size,size]);
-    }else{
-      const arr=new Float32Array(size*size*3); let j=0;
-      for(let i=0;i<id.length;i+=4){ arr[j++]=id[i]/255; arr[j++]=id[i+1]/255; arr[j++]=id[i+2]/255; }
-      tensor=new ort.Tensor('float32',arr,[1,size,size,3]);
-    }
-
-    const out=await session.run({[inputName]: tensor});
-    const first = out[Object.keys(out)[0]];
-    const dimsOut=first.dims;
-    let H,W; if(dimsOut.length===4){ H=dimsOut[2]; W=dimsOut[3]; } else { H=dimsOut[1]; W=dimsOut[2]; }
-    const raw=first.data;
-    let mn=Infinity,mx=-Infinity; for(let i=0;i<raw.length;i++){ const v=raw[i]; if(v<mn)mn=v; if(v>mx)mx=v; }
-    const rng=mx-mn || 1;
-
-    const small=makeCanvas(W,H), sx=small.getContext('2d'), im=sx.createImageData(W,H);
-    for(let i=0;i<W*H;i++){ const g=(((raw[i]-mn)/rng)*255)|0; const o=i*4; im.data[o]=g; im.data[o+1]=g; im.data[o+2]=g; im.data[o+3]=255; }
-    sx.putImageData(im,0,0);
-
-    const big=makeCanvas(img.width,img.height), bx=big.getContext('2d');
-    bx.imageSmoothingEnabled=true; bx.drawImage(small,0,0,W,H, 0,0,img.width,img.height);
-
-    const map=new Float32Array(img.width*img.height);
-    const bd=bx.getImageData(0,0,img.width,img.height).data;
-    for(let i=0,j=0;i<map.length;i++,j+=4) map[i]=bd[j]/255;
-
-    return {canvas:big, map};
-  }
-
-  // ===== Pipeline =====
-  async function runPipeline(){
-    if(!S.img || !S.seed) return;
-    dom.aiStatus.textContent='processing…'; status('Generating…');
-
-    // SEG
-    try{
-      if(S.segKey==='edgegrow'){
-        S.maskCanvas = edgeGrowMask(S.img, S.seed.x, S.seed.y);
-      }else{
-        const sess = await ensureSession(S.segKey);
-        S.maskCanvas = await runSeg(sess, S.segKey, S.img, S.seed);
-      }
-    }catch(e){ log('Seg fail:', e.message||e); S.maskCanvas = edgeGrowMask(S.img, S.seed.x, S.seed.y); }
-
-    // DEPTH
-    try{
-      if(S.depthKey==='none' && (S.effect.includes('depth') || S.effect==='edge-bound-grow')){
-        log('Depth required by effect; proceeding without model (will skip depth paths).');
-        S.depthCanvas=null; S.depthMap=null;
-      }else if(S.depthKey==='none'){
-        S.depthCanvas=null; S.depthMap=null;
-      }else{
-        const dSess = await ensureSession(S.depthKey);
-        const dep = await runDepth(dSess, S.depthKey, S.img);
-        S.depthCanvas=dep.canvas; S.depthMap=dep.map;
-      }
-    }catch(e){ log('Depth fail:', e.message||e); S.depthCanvas=null; S.depthMap=null; }
-
-    layoutPreview(); renderPreview();
-    dom.aiStatus.textContent='ready'; status('Done', true);
-  }
-
-  // ===== Image I/O =====
-  function openImageFile(){
-    dom.fileImage.value = '';
-    dom.fileImage.click();
-  }
-  function loadImageFromFile(file){
-    const r=new FileReader();
-    r.onload=()=>{
-      const im=new Image();
-      im.onload=()=>{
-        S.img=im; S.seed=null; S.maskCanvas=null; S.depthCanvas=null; S.depthMap=null;
-        fitEditor(); drawEditor(); layoutPreview(); renderPreview();
-        log(`Image loaded: ${file.name} ${im.width}x${im.height}`);
-      };
-      im.src=r.result;
-    };
-    r.readAsDataURL(file);
-  }
-  function enableDragDrop(el){
-    el.addEventListener('dragover', (e)=>{ e.preventDefault(); el.style.outline='2px dashed #2563eb'; });
-    el.addEventListener('dragleave', ()=>{ el.style.outline=''; });
-    el.addEventListener('drop', (e)=>{
-      e.preventDefault(); el.style.outline='';
-      const f = e.dataTransfer.files?.[0]; if(f) loadImageFromFile(f);
-    });
-  }
-
-  // ===== Events =====
-  window.addEventListener('resize', ()=>{ fitEditor(); drawEditor(); layoutPreview(); renderPreview(); });
-
-  dom.btnImage.addEventListener('click', openImageFile);
-  dom.fileImage.addEventListener('change', (e)=>{ const f=e.target.files?.[0]; if(f) loadImageFromFile(f); });
-
-  enableDragDrop(dom.edBox); enableDragDrop(dom.pvBox);
-
-  dom.btnReset.addEventListener('click', ()=>{
-    S.img=null; S.seed=null; S.maskCanvas=null; S.depthCanvas=null; S.depthMap=null;
-    drawEditor(); PV.ctx.clearRect(0,0,PV.c.width,PV.c.height); dom.edHint.style.display='block';
-  });
-
-  dom.btnSave.addEventListener('click', ()=>{
-    if(!S.img){ alert('Upload an image first.'); return; }
-    const out=makeCanvas(S.img.width,S.img.height), ox=out.getContext('2d');
-    const tmp=makeCanvas(out.width,out.height), tx=tmp.getContext('2d');
-    tx.drawImage(S.img,0,0);
-    const im=tx.getImageData(0,0,out.width,out.height), d=im.data;
-    for(let i=0;i<d.length;i+=4){ const y=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])|0; d[i]=y; d[i+1]=y; d[i+2]=y; d[i+3]=255; }
-    tx.putImageData(im,0,0); ox.drawImage(tmp,0,0);
-    const mask=buildFinalMaskFullRes();
-    const fg=makeCanvas(out.width,out.height), fx=fg.getContext('2d');
-    fx.drawImage(S.img,0,0); fx.globalCompositeOperation='destination-in'; fx.drawImage(mask,0,0);
-    ox.drawImage(fg,0,0);
-    const a=document.createElement('a'); a.href=out.toDataURL('image/png'); a.download=`colorsplash-${Date.now()}.png`; a.click();
-  });
-
-  dom.selSeg.addEventListener('change', ()=>{
-    S.segKey=dom.selSeg.value; log('Seg model:', S.segKey);
-    if(S.segKey!=='edgegrow') ensureSession(S.segKey).catch(e=>log('Seg preload failed:', e.message||e));
-  });
-  dom.selDepth.addEventListener('change', ()=>{
-    S.depthKey=dom.selDepth.value; log('Depth model:', S.depthKey);
-    if(S.depthKey!=='none') ensureSession(S.depthKey).catch(e=>log('Depth preload failed:', e.message||e));
-  });
-  dom.selEffect.addEventListener('change', ()=>{ S.effect=dom.selEffect.value; layoutPreview(); renderPreview(); });
-  dom.rngBand.addEventListener('input', ()=>{ if(S.img) { layoutPreview(); renderPreview(); }});
-  dom.rngDepthT.addEventListener('input', ()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
-  dom.rngEdgeT.addEventListener('input', ()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
-  dom.numFeather.addEventListener('input', ()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
-
-  dom.btnRun.addEventListener('click', ()=>{ if(!S.img) return alert('Upload an image first.'); if(!S.seed) return alert('Click a seed in ORIGINAL first.'); runPipeline().catch(e=>log('AI error:', e.message||e)); });
-
-  // Seed click
-  dom.edBox.addEventListener('click', (e)=>{
-    if(!S.img) return;
-    const r=dom.edBox.getBoundingClientRect();
-    const cx=e.clientX-r.left, cy=e.clientY-r.top;
-    const x = Math.round((cx - S.ed.x)/S.ed.s);
-    const y = Math.round((cy - S.ed.y)/S.ed.s);
-    S.seed = {x: clamp(x,0,S.img.width-1), y: clamp(y,0,S.img.height-1)};
-    drawEditor();
-    log(`Seed set at (${S.seed.x}, ${S.seed.y}).`);
-    if(S.aiOn) runPipeline().catch(err=>log('AI error:', err.message||err));
-  });
-
-  // Zoom (wheel)
-  dom.edBox.addEventListener('wheel', (e)=>{
-    if(!S.img) return; e.preventDefault();
-    const r=dom.edBox.getBoundingClientRect();
-    const mx=e.clientX-r.left, my=e.clientY-r.top;
-    const zf=1.1; const zoom=e.deltaY<0 ? zf : 1/zf;
-    const ns=clamp(S.ed.s*zoom, 0.1, 20);
-    // zoom around mouse
-    S.ed.x = mx - (mx - S.ed.x)*zoom; S.ed.y = my - (my - S.ed.y)*zoom; S.ed.s = ns;
-    drawEditor();
-  }, {passive:false});
-
-  // Logs
-  dom.logBtn.addEventListener('click', ()=> dom.logs.classList.toggle('visible'));
-  dom.btnClearLog.addEventListener('click', ()=> dom.log.textContent='');
-  dom.btnClearCache.addEventListener('click', async ()=>{ await idbClear(); S.sessions={}; S.cache={}; log('Cache cleared.'); });
-  dom.btnSelfTest.addEventListener('click', async ()=>{
-    for(const k of Object.keys(MODELS)){
-      const m=MODELS[k];
-      if(!m.gh && !m.db) continue;
-      if(m.gh){ try{ const r=await fetch(m.gh,{method:'HEAD',mode:'cors'}); log(`[HEAD GH] ${k}: ${r.status}`); }catch(e){ log(`[HEAD GH] ${k}: ${e.message}`); } }
-      if(m.db){ try{ const r=await fetch(m.db,{method:'HEAD',mode:'cors'}); log(`[HEAD DB] ${k}: ${r.status}`); }catch(e){ log(`[HEAD DB] ${k}: ${e.message}`); } }
-      await sleep(50);
-    }
-  });
-
-  // Thumbs hover behavior
-  attachThumbHover();
-
-  // ===== Init =====
-  (async function init(){
-    log('App ready. Version 4.0.0');
-    // onnxruntime presence
-    if(!window.ort){ log('onnxruntime-web not available; AI will use EdgeGrow only.'); dom.aiStatus.textContent='runtime not found'; }
-    const providers = await pickProviders();
-    log('Runtime:', providers.includes('webgpu') ? 'WebGPU + WASM fallback' : 'WASM only');
-
-    fitEditor(); drawEditor(); layoutPreview(); renderPreview();
-  })();
-
-})();
-</script>
+  return bestCanvas;
+}
+function maskHit(maskC,x,y){ const ctx=maskC.getContext('2d'); const d=ctx.getImageData(clamp(x|0,0,maskC.width-1),clamp(y|0,0,maskC.height-1),1,1).data; return d[3]>10; }
+
+// DEPTH (NCHW)
+async function runDepth(session,key,img){
+  if(!session) return {canvas:null,map:null};
+  const info=MODELS[key],size=info.input||256,layout=info.layout||'NCHW';
+  const inputName=session.inputNames[0]||'pixel_values';
+  const pack=packImage(img,size,layout);
+  let out; try{ out=await session.run({[inputName]:pack.tensor}); } catch(e){ log('Depth run error:',e.message||e); return {canvas:null,map:null}; }
+  const first=out[Object.keys(out)[0]]; const dims=first.dims; let H,W; if(dims.length===4){ H=dims[2]; W=dims[3]; } else { H=dims[1]; W=dims[2]; }
+  const raw=first.data; let mn=Infinity,mx=-Infinity; for(let i=0;i<raw.length;i++){ const v=raw[i]; if(v<mn) mn=v; if(v>mx) mx=v; } const rng=mx-mn||1;
+  const small=makeCanvas(W,H),sx=small.getContext('2d'),im=sx.createImageData(W,H);
+  for(let i=0;i<W*H;i++){ const g=(((raw[i]-mn)/rng)*255)|0; const o=i*4; im.data[o]=g; im.data[o+1]=g; im.data[o+2]=g; im.data[o+3]=255; } sx.putImageData(im,0,0);
+  const big=makeCanvas(img.width,img.height),bx=big.getContext('2d'); bx.imageSmoothingEnabled=true; bx.drawImage(small,0,0,W,H,0,0,img.width,img.height);
+  const map=new Float32Array(img.width*img.height); const bd=bx.getImageData(0,0,img.width,img.height).data; for(let i=0,j=0;i<map.length;i++,j+=4) map[i]=bd[j]/255;
+  return {canvas:big,map};
+}
+
+// PIPELINE
+async function runPipeline(){
+  if(!S.img || !S.seed) return;
+  dom.aiStatus.textContent='processing…'; status('Generating…');
+  try{ if(S.segKey==='edgegrow'){ S.maskCanvas=edgeGrowMask(S.img,S.seed.x,S.seed.y); } else { const sess=await ensureSession(S.segKey); S.maskCanvas=await runSeg(sess,S.segKey,S.img,S.seed); } }catch(e){ log('Seg fail:',e.message||e); S.maskCanvas=edgeGrowMask(S.img,S.seed.x,S.seed.y); }
+  try{ if(S.depthKey==='none' && (S.effect.includes('depth')||S.effect==='edge-bound-grow')){ S.depthCanvas=null; S.depthMap=null; } else if(S.depthKey==='none'){ S.depthCanvas=null; S.depthMap=null; } else { const ds=await ensureSession(S.depthKey); const dep=await runDepth(ds,S.depthKey,S.img); S.depthCanvas=dep.canvas; S.depthMap=dep.map; } }catch(e){ log('Depth fail:',e.message||e); S.depthCanvas=null; S.depthMap=null; }
+  layoutPreview(); renderPreview(); dom.aiStatus.textContent='ready'; status('Done',true);
+}
+
+// Image I/O
+function openImageFile(){ dom.fileImage.value=''; dom.fileImage.click(); }
+function loadImageFromFile(file){ const r=new FileReader(); r.onload=()=>{ const im=new Image(); im.onload=()=>{ S.img=im; S.seed=null; S.maskCanvas=null; S.depthCanvas=null; S.depthMap=null; fitEditor(); drawEditor(); layoutPreview(); renderPreview(); log(`Image loaded: ${file.name} ${im.width}x${im.height}`); }; im.src=r.result; }; r.readAsDataURL(file); }
+function enableDragDrop(el){ el.addEventListener('dragover',e=>{ e.preventDefault(); el.style.outline='2px dashed #2563eb'; }); el.addEventListener('dragleave',()=>{ el.style.outline=''; });
+  el.addEventListener('drop',e=>{ e.preventDefault(); el.style.outline=''; const f=e.dataTransfer.files?.[0]; if(f) loadImageFromFile(f); }); }
+
+// Events
+window.addEventListener('resize',()=>{ fitEditor(); drawEditor(); layoutPreview(); renderPreview(); });
+dom.btnImage.addEventListener('click',openImageFile);
+dom.fileImage.addEventListener('change',e=>{ const f=e.target.files?.[0]; if(f) loadImageFromFile(f); });
+enableDragDrop(dom.edBox); enableDragDrop(dom.pvBox);
+dom.btnReset.addEventListener('click',()=>{ S.img=null; S.seed=null; S.maskCanvas=null; S.depthCanvas=null; S.depthMap=null; drawEditor(); PV.ctx.clearRect(0,0,PV.c.width,PV.c.height); dom.edHint.style.display='block'; });
+dom.btnSave.addEventListener('click',()=>{ if(!S.img){ alert('Upload an image first.'); return; } const out=makeCanvas(S.img.width,S.img.height),ox=out.getContext('2d'); const tmp=makeCanvas(out.width,out.height),tx=tmp.getContext('2d'); tx.drawImage(S.img,0,0);
+  const im=tx.getImageData(0,0,out.width,out.height),d=im.data; for(let i=0;i<d.length;i+=4){ const y=(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])|0; d[i]=y; d[i+1]=y; d[i+2]=y; d[i+3]=255; } tx.putImageData(im,0,0); ox.drawImage(tmp,0,0);
+  const mask=buildFinalMaskFullRes(); const fg=makeCanvas(out.width,out.height),fx=fg.getContext('2d'); fx.drawImage(S.img,0,0); fx.globalCompositeOperation='destination-in'; fx.drawImage(mask,0,0); ox.drawImage(fg,0,0);
+  const a=document.createElement('a'); a.href=out.toDataURL('image/png'); a.download=`colorsplash-${Date.now()}.png`; a.click(); });
+
+dom.selSeg.addEventListener('change',()=>{ S.segKey=dom.selSeg.value; log('Seg model:',S.segKey); if(S.segKey!=='edgegrow') ensureSession(S.segKey).catch(e=>log('Seg preload failed:',e.message||e)); });
+dom.selDepth.addEventListener('change',()=>{ S.depthKey=dom.selDepth.value; log('Depth model:',S.depthKey); if(S.depthKey!=='none') ensureSession(S.depthKey).catch(e=>log('Depth preload failed:',e.message||e)); });
+dom.selEffect.addEventListener('change',()=>{ S.effect=dom.selEffect.value; layoutPreview(); renderPreview(); });
+dom.rngBand.addEventListener('input',()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
+dom.rngDepthT.addEventListener('input',()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
+dom.rngEdgeT.addEventListener('input',()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
+dom.numFeather.addEventListener('input',()=>{ if(S.img){ layoutPreview(); renderPreview(); }});
+
+dom.btnRun.addEventListener('click',()=>{ if(!S.img) return alert('Upload an image first.'); if(!S.seed) return alert('Click a seed in ORIGINAL first.'); runPipeline().catch(e=>log('AI error:',e.message||e)); });
+
+dom.edBox.addEventListener('click',(e)=>{ if(!S.img) return; const r=dom.edBox.getBoundingClientRect(); const cx=e.clientX-r.left,cy=e.clientY-r.top;
+  const x=Math.round((cx-S.ed.x)/S.ed.s),y=Math.round((cy-S.ed.y)/S.ed.s); S.seed={x:clamp(x,0,S.img.width-1),y:clamp(y,0,S.img.height-1)}; drawEditor(); log(`Seed set at (${S.seed.x}, ${S.seed.y}).`); if(S.aiOn) runPipeline().catch(err=>log('AI error:',err.message||err)); });
+
+dom.edBox.addEventListener('wheel',(e)=>{ if(!S.img) return; e.preventDefault(); const r=dom.edBox.getBoundingClientRect(); const mx=e.clientX-r.left,my=e.clientY-r.top; const zf=1.1; const zoom=e.deltaY<0?zf:1/zf; const ns=clamp(S.ed.s*zoom,0.1,20); S.ed.x=mx-(mx-S.ed.x)*zoom; S.ed.y=my-(my-S.ed.y)*zoom; S.ed.s=ns; drawEditor(); },{passive:false});
+
+dom.logBtn.addEventListener('click',()=>dom.logs.classList.toggle('visible'));
+dom.btnClearLog.addEventListener('click',()=>dom.log.textContent='');
+dom.btnClearCache.addEventListener('click',async()=>{ await idbClear(); S.sessions={}; S.cache={}; log('Cache cleared.'); });
+dom.btnSelfTest.addEventListener('click',async()=>{ for(const k of Object.keys(MODELS)){ const m=MODELS[k]; if(!m.gh && !m.db) continue; if(m.gh){ try{ const r=await fetch(m.gh,{method:'HEAD',mode:'cors'}); log(`[HEAD GH] ${k}: ${r.status}`);}catch(e){ log(`[HEAD GH] ${k}: ${e.message}`);} } if(m.db){ try{ const r=await fetch(m.db,{method:'HEAD',mode:'cors'}); log(`[HEAD DB] ${k}: ${r.status}`);}catch(e){ log(`[HEAD DB] ${k}: ${e.message}`);} } await sleep(50);} });
+
+(function init(){ log('App ready. Version 4.1.0'); (async()=>{ const providers=await pickProviders(); log('Runtime:',providers.includes('webgpu')?'WebGPU + WASM fallback':'WASM only'); })(); fitEditor(); drawEditor(); layoutPreview(); renderPreview(); attachThumbHover(); })();
+})();</script>
 </body>
 </html>
